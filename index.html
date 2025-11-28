@@ -30,7 +30,7 @@
       <span class="search-icon">🔎</span>
       <input id="searchInput" type="search" placeholder="Tìm kiếm (vd: piano, zombie, cổ tích...)"
              autocomplete="off" />
-      <button class="pill-btn" id="clearSearch" type="button">X</button>
+      <button class="pill-btn" id="clearSearch" type="button" title="Xóa">X</button>
     </section>
 
     <!-- Tabs -->
@@ -51,7 +51,7 @@
       <div class="hint" id="resultHint">Gõ để tìm kiếm trong tab hiện tại.</div>
 
       <section class="grid view-card" id="itemsRoot" aria-live="polite">
-        <!-- JS renders items here -->
+        <!-- JS renders -->
       </section>
 
       <div class="empty" id="emptyState" style="display:none;">
@@ -65,6 +65,39 @@
       <div class="foot-left">WP8 style • No libs</div>
       <div class="foot-right" id="statusText">Game • 0 kết quả</div>
     </footer>
+  </div>
+
+  <!-- Detail Overlay -->
+  <div class="overlay" id="detailOverlay" aria-hidden="true">
+    <div class="overlay-card" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+      <div class="overlay-top">
+        <button class="back-btn" id="detailClose" type="button">← Back</button>
+        <div class="overlay-actions">
+          <button class="pill-btn" id="detailAction" type="button">Open</button>
+        </div>
+      </div>
+
+      <div class="detail-head">
+        <div class="tile big" id="detailTile">G</div>
+        <div class="detail-head-text">
+          <div class="detail-title" id="detailTitle">Title</div>
+          <div class="detail-meta" id="detailMeta">Meta</div>
+          <div class="detail-badges" id="detailBadges"></div>
+        </div>
+      </div>
+
+      <div class="detail-body">
+        <div class="detail-section">
+          <div class="detail-label">Mô tả</div>
+          <div class="detail-desc" id="detailDesc"></div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-label">Thông tin</div>
+          <ul class="detail-list" id="detailInfo"></ul>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="script.js"></script>
