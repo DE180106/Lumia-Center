@@ -70,12 +70,11 @@
     </footer>
   </div>
 
-  <!-- Story Overlay (Reader + AI) -->
+  <!-- Story Overlay (Reader + AI + Voice) -->
   <div class="overlay" id="storyOverlay" aria-hidden="true">
     <div class="overlay-card" role="dialog" aria-modal="true" aria-labelledby="storyTitle">
       <div class="overlay-top">
         <button class="back-btn" id="storyClose" type="button">← Back</button>
-
         <div class="overlay-actions">
           <button class="pill-btn" id="storySave" type="button" title="Lưu truyện AI">Save</button>
         </div>
@@ -183,37 +182,66 @@
         </div>
       </div>
 
-      <!-- VOICE MODE -->
+      <!-- VOICE MODE (CENTER + SEEK + SPEED + OS TTS FALLBACK) -->
       <div class="detail-body" id="panelVoice" style="display:none;">
-        <div class="detail-section">
-          <div class="detail-label">AI Đọc (Gemini TTS)</div>
+        <div class="detail-section tts-center">
+          <div style="width:100%;">
+            <div class="detail-label">AI Đọc (Gemini TTS)</div>
 
-          <div class="ai-box">
-            <div class="warn">
-              Tip: nếu Lumia/WP8 không phát được WAV, hãy thử trên PC/Android trước.
+            <div class="ai-box tts-box">
+              <div class="warn">
+                Lumia/WP8 có thể không phát được audio từ Blob/WAV. Nếu không nghe được, dùng “Đọc bằng máy”.
+              </div>
+
+              <label class="ai-row">
+                <span>Giọng (Gemini)</span>
+                <input id="ttsVoice" type="text" value="Kore" />
+              </label>
+
+              <label class="ai-row">
+                <span>Giới hạn đọc (ký tự)</span>
+                <select id="ttsLimit">
+                  <option value="800">Ngắn (800)</option>
+                  <option value="1400" selected>Vừa (1400)</option>
+                  <option value="2400">Dài (2400)</option>
+                </select>
+              </label>
+
+              <label class="ai-row">
+                <span>Tốc độ</span>
+                <select id="ttsSpeed">
+                  <option value="0.75">0.75×</option>
+                  <option value="1" selected>1×</option>
+                  <option value="1.25">1.25×</option>
+                  <option value="1.5">1.5×</option>
+                  <option value="2">2×</option>
+                </select>
+              </label>
+
+              <div class="row">
+                <button class="pill-btn wide" id="ttsSpeak" type="button">🔊 AI đọc</button>
+                <button class="pill-btn wide" id="ttsStop" type="button">Stop</button>
+              </div>
+
+              <audio id="ttsPlayer" controls style="width:100%; margin-top:10px;"></audio>
+
+              <div class="tts-seek">
+                <button class="pill-btn" id="ttsRew" type="button">⟲ 10s</button>
+                <div class="tts-seek-mid">
+                  <input id="ttsSeek" type="range" min="0" max="1000" value="0" />
+                  <div class="tts-time" id="ttsTime">00:00 / 00:00</div>
+                </div>
+                <button class="pill-btn" id="ttsFwd" type="button">10s ⟳</button>
+              </div>
+
+              <div class="row" style="margin-top:10px;">
+                <button class="pill-btn wide" id="osSpeak" type="button">🗣 Đọc bằng máy</button>
+                <button class="pill-btn wide" id="osStop" type="button">Dừng máy</button>
+              </div>
+
+              <div class="ai-status" id="ttsStatus"></div>
+              <div class="ai-status" id="osTtsStatus"></div>
             </div>
-
-            <label class="ai-row">
-              <span>Giọng</span>
-              <input id="ttsVoice" type="text" value="Kore" />
-            </label>
-
-            <label class="ai-row">
-              <span>Giới hạn đọc (ký tự)</span>
-              <select id="ttsLimit">
-                <option value="800">Ngắn (800)</option>
-                <option value="1400" selected>Vừa (1400)</option>
-                <option value="2400">Dài (2400)</option>
-              </select>
-            </label>
-
-            <div class="row">
-              <button class="pill-btn wide" id="ttsSpeak" type="button">🔊 AI đọc</button>
-              <button class="pill-btn wide" id="ttsStop" type="button">Stop</button>
-            </div>
-
-            <audio id="ttsPlayer" controls style="width:100%; margin-top:10px;"></audio>
-            <div class="ai-status" id="ttsStatus"></div>
           </div>
         </div>
       </div>
@@ -233,18 +261,19 @@
         <div class="tile big">⚙</div>
         <div class="detail-head-text">
           <div class="detail-title" id="settingsTitle">Cài đặt</div>
-          <div class="detail-meta">Gemini API (tuỳ chọn)</div>
+          <div class="detail-meta">Gemini API Key</div>
           <div class="detail-badges"></div>
         </div>
       </div>
 
       <div class="detail-body">
         <div class="detail-section">
-          <div class="detail-label">Gemini API Key</div>
+          <div class="detail-label">API Key</div>
           <div class="warn">
-            Nếu bạn để key trong <b>script.js</b> và deploy GitHub Pages thì key sẽ bị lộ.
+            Bạn đang deploy GitHub Pages: API key để trong JS sẽ bị lộ.
+            Nếu vẫn muốn: dán vào script.js hoặc lưu tạm ở đây.
           </div>
-          <input id="apiKeyInput" type="password" placeholder="Dán API key vào đây (tuỳ chọn)" />
+          <input id="apiKeyInput" type="password" placeholder="Dán API key vào đây" />
           <div class="row" style="margin-top:10px;">
             <button class="pill-btn wide" id="saveApiKey" type="button">Save key</button>
             <button class="pill-btn wide" id="clearApiKey" type="button">Clear</button>
