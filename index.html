@@ -28,7 +28,7 @@
     <!-- Search -->
     <section class="searchbar">
       <span class="search-icon">🔎</span>
-      <input id="searchInput" type="search" placeholder="Tìm kiếm (vd: piano, zombie, cổ tích...)"
+      <input id="searchInput" type="search" placeholder="Tìm kiếm (vd: zombie, piano, fox...)"
              autocomplete="off" />
       <button class="pill-btn" id="clearSearch" type="button" title="Xóa">X</button>
     </section>
@@ -67,35 +67,36 @@
     </footer>
   </div>
 
-  <!-- Detail Overlay -->
-  <div class="overlay" id="detailOverlay" aria-hidden="true">
-    <div class="overlay-card" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+  <!-- Story Reader Overlay -->
+  <div class="overlay" id="readerOverlay" aria-hidden="true">
+    <div class="overlay-card reader" role="dialog" aria-modal="true" aria-labelledby="readerTitle">
       <div class="overlay-top">
-        <button class="back-btn" id="detailClose" type="button">← Back</button>
+        <button class="back-btn" id="readerClose" type="button">← Back</button>
+
         <div class="overlay-actions">
-          <button class="pill-btn" id="detailAction" type="button">Open</button>
+          <button class="pill-btn" id="fontMinus" type="button" title="Nhỏ chữ">A-</button>
+          <button class="pill-btn" id="fontPlus" type="button" title="To chữ">A+</button>
+          <button class="pill-btn" id="autoScrollBtn" type="button" title="Auto scroll">Auto</button>
         </div>
       </div>
 
-      <div class="detail-head">
-        <div class="tile big" id="detailTile">G</div>
-        <div class="detail-head-text">
-          <div class="detail-title" id="detailTitle">Title</div>
-          <div class="detail-meta" id="detailMeta">Meta</div>
-          <div class="detail-badges" id="detailBadges"></div>
+      <div class="reader-head">
+        <div class="tile big story" id="readerTile">S</div>
+        <div class="reader-head-text">
+          <div class="detail-title" id="readerTitle">Title</div>
+          <div class="detail-meta" id="readerMeta">Meta</div>
+          <div class="reader-sub" id="readerSub">Lưu vị trí đọc • Offline</div>
         </div>
       </div>
 
-      <div class="detail-body">
-        <div class="detail-section">
-          <div class="detail-label">Mô tả</div>
-          <div class="detail-desc" id="detailDesc"></div>
-        </div>
+      <div class="reader-body" id="readerBody">
+        <div class="reader-content" id="readerContent"></div>
+      </div>
 
-        <div class="detail-section">
-          <div class="detail-label">Thông tin</div>
-          <ul class="detail-list" id="detailInfo"></ul>
-        </div>
+      <div class="reader-bottom">
+        <button class="pill-btn" id="prevStory" type="button">◀ Prev</button>
+        <div class="reader-progress" id="readerProgress">0%</div>
+        <button class="pill-btn" id="nextStory" type="button">Next ▶</button>
       </div>
     </div>
   </div>
