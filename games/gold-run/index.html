@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <meta name="msapplication-tap-highlight" content="no" />
+  <title>Gold Run</title>
+  <style>
+    *{box-sizing:border-box} html,body{height:100%;margin:0;font-family:Segoe UI,Arial}
+    body{background:#111;color:#eee;display:flex;align-items:center;justify-content:center;padding:10px}
+    .wrap{width:420px;max-width:100%}
+    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .btn{border:1px solid #333;background:#1b1b1b;color:#eee;padding:8px 10px;border-radius:10px;text-decoration:none}
+    .card{border:1px solid #333;background:#171717;border-radius:16px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+    canvas{width:100%;height:auto;border-radius:12px;border:1px solid #2a2a2a;background:#0f1115;display:block}
+    .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+    .pill{flex:1;border:1px solid #333;background:#1b1b1b;color:#eee;padding:10px 12px;border-radius:999px;min-width:110px}
+    .hint{font-size:12px;opacity:.82;margin-top:8px;line-height:1.35}
+
+    .mini{
+      margin-top:8px;
+      display:flex;gap:8px;flex-wrap:wrap;
+      font-size:12px;opacity:.9;
+    }
+    .chip{
+      border:1px solid #2a2a2a;background:#0f1115;border-radius:999px;
+      padding:6px 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div><b>Gold Run</b> <span style="opacity:.75;font-size:12px;">(3 lanes • coins • jump/slide)</span></div>
+      <a class="btn" href="../../index.html#tab=game">← Back</a>
+    </div>
+
+    <div class="card">
+      <canvas id="c" width="360" height="560"></canvas>
+
+      <div class="row">
+        <button class="pill" id="leftBtn">LEFT</button>
+        <button class="pill" id="rightBtn">RIGHT</button>
+        <button class="pill" id="jumpBtn">JUMP</button>
+        <button class="pill" id="slideBtn">SLIDE</button>
+        <button class="pill" id="restartBtn">RESTART</button>
+      </div>
+
+      <div class="mini">
+        <div class="chip">Touch: swipe ← → ↑ ↓</div>
+        <div class="chip">Tap canvas: trái/phải để đổi lane</div>
+      </div>
+
+      <div class="hint">
+        Tip: chướng ngại thấp = JUMP, chướng ngại cao = SLIDE.<br>
+        Best lưu trên máy (localStorage).
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // rAF polyfill (IE/WP friendly)
+    window.requestAnimationFrame = window.requestAnimationFrame ||
+      window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame ||
+      function(cb){ return setTimeout(function(){ cb(Date.now()); }, 1000/60); };
+
+    (function(){
+      var c = document.getElementById('c');
+      var ctx = c.getContext('2d');
+      var W = c.width, H = c.height;
+
+      function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+      function rand(a,b){ return a + Math.random()*(b-a); }
+      function randi(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+
+      // lanes: -1, 0, +1
+      function laneX(lane){
+        var roadCenter = W/2;
+        var laneGap = 86;
+        return roadCenter + lane * laneGap;
+      }
+
+      // best
+      var bestScore = 0, bestCoins = 0;
+      try{
+        bestScore = parseInt(localStorage.getItem('gr_bestScore')||'0',10)||0;
+        bestCoins = parseInt(localStorage.getItem('gr_bestCoins')||'0',10)||0;
+      }catch(e){}
+
+      var state = {
+        running: true,
+        score: 0,
+        coins: 0,
+        speed: 360,      // px/s
+        spawnT: 0,
+        coinT: 0,
+        difficultyT: 0,
+        roadScroll: 0,
+        msgT: 0,
+        msg: ""
+      };
+
+      // player world at fixed y
+      var player = {
+        lane: 0,
+        y: H - 120,
+        w: 34,
+        h: 48,
+        vy: 0,
+        jumping: false,
+        sliding: false,
+        slideT: 0
+      };
+
+      var gravity = 2100;      // px/s^2
+      var jumpV = -820;        // px/s
+      var floorY = H - 120;    // feet anchor
+
+      // entities moving toward player (in screen coords)
+      var obstacles = []; // {lane, y, type, w,h}
+      var coins = [];     // {lane, y, r}
+
+      function say(msg){
+        state.msg = msg;
+        state.msgT = 1.2; // seconds
+      }
+
+      function reset(){
+        obstacles = [];
+        coins = [];
+        state.running = true;
+        state.score = 0;
+        state.coins = 0;
+        state.speed = 360;
+        state.spawnT = 0;
+        state.coinT = 0;
+        state.difficultyT = 0;
+        state.roadScroll = 0;
+        state.msgT = 0;
+        state.msg = "";
+
+        player.lane = 0;
+        player.vy = 0;
+        player.jumping = false;
+        player.sliding = false;
+        player.slideT = 0;
+
+        // warm start
+        for(var i=0;i<2;i++){
+          spawnObstacle(-H*i - 200);
+          spawnCoinRow(-H*i - 320);
+        }
+        say("GO!");
+      }
+
+      function playerRect(){
+        var x = laneX(player.lane) - player.w/2;
+        var h = player.h;
+        var y = player.y - h;
+
+        if(player.sliding){
+          h = 28; // smaller hitbox height
+          y = player.y - h;
+        }
+        if(player.jumping){
+          // y already moved by jump physics via player.y shift? -> we keep feet grounded at floorY + jump offset
+          // We'll compute actual y in update using jumpOffset.
+        }
+        return {x:x, y:y, w:player.w, h:h};
+      }
+
+      var jumpOffset = 0; // px up (negative y direction)
+      function moveLane(dir){
+        if(!state.running){ reset(); return; }
+        player.lane = clamp(player.lane + dir, -1, 1);
+      }
+
+      function jump(){
+        if(!state.running){ reset(); return; }
+        if(player.sliding) return; // no jump while sliding
+        if(!player.jumping){
+          player.jumping = true;
+          player.vy = jumpV;
+        }
+      }
+
+      function slide(){
+        if(!state.running){ reset(); return; }
+        if(player.jumping) return; // no slide mid-air to keep simple
+        player.sliding = true;
+        player.slideT = 0.6; // seconds
+      }
+
+      function rectHit(a,b){
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+      }
+
+      function spawnObstacle(startY){
+        // type: "low" needs JUMP, "high" needs SLIDE
+        var lane = randi(-1, 1);
+        var type = (Math.random() < 0.5) ? "low" : "high";
+        var w = 46;
+        var h = (type === "low") ? 26 : 54;
+
+        obstacles.push({
+          lane: lane,
+          y: (typeof startY === "number") ? startY : -60,
+          type: type,
+          w: w,
+          h: h,
+          passed:false
+        });
+      }
+
+      function spawnCoinRow(startY){
+        // 1 to 3 coins in random lanes
+        var count = (Math.random() < 0.45) ? 3 : ((Math.random() < 0.7) ? 2 : 1);
+        var lanes = [-1,0,1];
+        // simple shuffle-ish
+        for(var i=0;i<lanes.length;i++){
+          var j = randi(i, lanes.length-1);
+          var tmp = lanes[i]; lanes[i]=lanes[j]; lanes[j]=tmp;
+        }
+        for(var k=0;k<count;k++){
+          coins.push({
+            lane: lanes[k],
+            y: (typeof startY === "number") ? startY : -40,
+            r: 8
+          });
+        }
+      }
+
+      function update(dt){
+        if(!state.running) return;
+
+        // speed ramp
+        state.difficultyT += dt;
+        if(state.difficultyT > 1.4){
+          state.difficultyT = 0;
+          state.speed += 10; // tăng dần
+        }
+
+        // score by survival time
+        state.score += Math.floor((state.speed * dt) * 0.02); // scale
+        state.roadScroll += state.speed * dt;
+
+        // message timer
+        state.msgT = Math.max(0, state.msgT - dt);
+
+        // jump physics (jumpOffset measured from floor)
+        if(player.jumping){
+          player.vy += gravity * dt;
+          jumpOffset += player.vy * dt; // note: vy negative -> jumpOffset negative initially
+          // when landing (jumpOffset >= 0 means feet back to floor)
+          if(jumpOffset >= 0){
+            jumpOffset = 0;
+            player.jumping = false;
+            player.vy = 0;
+          }
+        }
+
+        // slide timer
+        if(player.sliding){
+          player.slideT -= dt;
+          if(player.slideT <= 0){
+            player.sliding = false;
+            player.slideT = 0;
+          }
+        }
+
+        // move entities down the screen
+        for(var i=0;i<obstacles.length;i++){
+          obstacles[i].y += state.speed * dt;
+        }
+        for(var j=0;j<coins.length;j++){
+          coins[j].y += state.speed * dt;
+        }
+
+        // spawn scheduling by time & speed
+        state.spawnT += dt;
+        state.coinT += dt;
+
+        var spawnInterval = clamp(0.62 - (state.speed-360)/900, 0.34, 0.62);
+        var coinInterval  = clamp(0.55 - (state.speed-360)/1200, 0.35, 0.55);
+
+        if(state.spawnT >= spawnInterval){
+          state.spawnT = 0;
+          spawnObstacle(-70);
+        }
+        if(state.coinT >= coinInterval){
+          state.coinT = 0;
+          if(Math.random() < 0.9) spawnCoinRow(-50);
+        }
+
+        // collision check
+        // player rect in screen coords:
+        var pr = playerRect();
+        // apply jumpOffset: if jumping, player moves UP => rect y decreases
+        pr.y = pr.y + jumpOffset; // jumpOffset negative -> moves up
+        // adjust feet anchor (player.y constant, rect shifts)
+
+        // obstacles collision
+        for(var k=0;k<obstacles.length;k++){
+          var o = obstacles[k];
+          var ox = laneX(o.lane) - o.w/2;
+          var oy = (player.y - 12) - o.y; // WRONG? We'll map obstacle y as screen position absolute.
+        }
+
+        // We treat obstacle.y as screen Y directly (0..H). Spawn at negative.
+        // So build rect using obstacle.y directly.
+        for(var k2=0;k2<obstacles.length;k2++){
+          var ob = obstacles[k2];
+          var obx = laneX(ob.lane) - ob.w/2;
+          var oby = ob.y; // screen y
+          var obr = { x: obx, y: oby, w: ob.w, h: ob.h };
+
+          if(rectHit(pr, obr)){
+            // resolve based on type and player state
+            // low obstacle -> need jump (player should be high enough)
+            // high obstacle -> need slide (hitbox small)
+            state.running = false;
+            // save best
+            if(state.score > bestScore){ bestScore = state.score; try{ localStorage.setItem('gr_bestScore', String(bestScore)); }catch(e){} }
+            if(state.coins > bestCoins){ bestCoins = state.coins; try{ localStorage.setItem('gr_bestCoins', String(bestCoins)); }catch(e){} }
+            say("GAME OVER");
+            break;
+          }
+
+          // passed scoring (optional)
+          if(!ob.passed && ob.y > H + 20){
+            ob.passed = true;
+          }
+        }
+
+        // coin collect
+        for(var cc=0;cc<coins.length;cc++){
+          var co = coins[cc];
+          var cx = laneX(co.lane);
+          var cy = co.y;
+          var px = pr.x + pr.w/2;
+          var py = pr.y + pr.h/2;
+
+          var dx = px - cx;
+          var dy = py - cy;
+          if((dx*dx + dy*dy) < (co.r + 12)*(co.r + 12)){
+            state.coins++;
+            // remove coin
+            coins.splice(cc,1);
+            cc--;
+          }
+        }
+
+        // cleanup offscreen
+        while(obstacles.length && obstacles[0].y > H + 130) obstacles.shift();
+        while(coins.length && coins[0].y > H + 130) coins.shift();
+
+        // update best in runtime (optional)
+        if(state.score > bestScore && state.score % 60 === 0){
+          bestScore = state.score;
+          try{ localStorage.setItem('gr_bestScore', String(bestScore)); }catch(e){}
+        }
+      }
+
+      function draw(){
+        ctx.clearRect(0,0,W,H);
+
+        // background
+        ctx.fillStyle = '#0f1115';
+        ctx.fillRect(0,0,W,H);
+
+        // road
+        var roadW = 280;
+        var roadX = (W-roadW)/2;
+        ctx.fillStyle = '#121823';
+        ctx.fillRect(roadX, 0, roadW, H);
+
+        // lane lines
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(roadX + roadW/3, 0); ctx.lineTo(roadX + roadW/3, H);
+        ctx.moveTo(roadX + roadW*2/3, 0); ctx.lineTo(roadX + roadW*2/3, H);
+        ctx.stroke();
+
+        // dashed center markers
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        var dashH = 18, gap = 18;
+        var offset = state.roadScroll % (dashH + gap);
+        for(var y=-40; y<H+40; y += (dashH+gap)){
+          var yy = y + offset;
+          ctx.fillRect(roadX + roadW/2 - 2, yy, 4, dashH);
+        }
+
+        // coins
+        for(var i=0;i<coins.length;i++){
+          var co = coins[i];
+          var x = laneX(co.lane);
+          var y = co.y;
+          ctx.beginPath();
+          ctx.fillStyle = '#facc15';
+          ctx.arc(x, y, co.r, 0, Math.PI*2);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(0,0,0,0.25)';
+          ctx.fillRect(x-2, y-5, 4, 10);
+        }
+
+        // obstacles
+        for(var j=0;j<obstacles.length;j++){
+          var ob = obstacles[j];
+          var x0 = laneX(ob.lane) - ob.w/2;
+          var y0 = ob.y;
+
+          if(ob.type === "low"){
+            ctx.fillStyle = '#f97316';
+            ctx.fillRect(x0, y0, ob.w, ob.h);
+            ctx.fillStyle = '#0b0f12';
+            ctx.fillRect(x0+6, y0+6, 6, 6);
+          } else {
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(x0, y0, ob.w, ob.h);
+            ctx.fillStyle = '#0b0f12';
+            ctx.fillRect(x0+6, y0+10, 6, 6);
+            ctx.fillRect(x0+ob.w-12, y0+10, 6, 6);
+          }
+        }
+
+        // player
+        var pr = playerRect();
+        pr.y = pr.y + jumpOffset;
+
+        // body
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(pr.x, pr.y, pr.w, pr.h);
+        // face
+        ctx.fillStyle = '#0b0f12';
+        ctx.fillRect(pr.x + pr.w - 12, pr.y + 10, 5, 5);
+
+        // UI
+        ctx.fillStyle = '#e5e7eb';
+        ctx.font = 'bold 16px Segoe UI, Arial';
+        ctx.fillText('Score: ' + state.score, 12, 24);
+        ctx.fillStyle = '#facc15';
+        ctx.fillText('Coins: ' + state.coins, 12, 44);
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.font = '12px Segoe UI, Arial';
+        ctx.fillText('Best: ' + bestScore + ' • BestCoins: ' + bestCoins, 12, 62);
+
+        if(state.msgT > 0){
+          ctx.fillStyle = 'rgba(0,0,0,0.45)';
+          ctx.fillRect(0, H/2 - 44, W, 88);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 20px Segoe UI, Arial';
+          ctx.fillText(state.msg, 118, H/2 - 6);
+        }
+
+        if(!state.running){
+          ctx.fillStyle = 'rgba(0,0,0,0.45)';
+          ctx.fillRect(0,0,W,H);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 22px Segoe UI, Arial';
+          ctx.fillText('GAME OVER', 112, 255);
+          ctx.font = '13px Segoe UI, Arial';
+          ctx.fillText('Tap / Restart để chơi lại', 103, 285);
+        }
+      }
+
+      // loop
+      var last = Date.now();
+      function loop(){
+        var now = Date.now();
+        var dt = (now - last)/1000;
+        last = now;
+        dt = clamp(dt, 0, 0.033);
+
+        if(state.running) update(dt);
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      // ===== Input =====
+      function prevent(e){ if(e && e.preventDefault) e.preventDefault(); return false; }
+
+      // buttons
+      document.getElementById('leftBtn').onclick = function(){ moveLane(-1); };
+      document.getElementById('rightBtn').onclick = function(){ moveLane(1); };
+      document.getElementById('jumpBtn').onclick = jump;
+      document.getElementById('slideBtn').onclick = slide;
+      document.getElementById('restartBtn').onclick = reset;
+
+      // keyboard
+      document.addEventListener('keydown', function(e){
+        e = e || window.event;
+        var code = e.keyCode || 0;
+        if(code===37) moveLane(-1);
+        if(code===39) moveLane(1);
+        if(code===38 || code===32) { prevent(e); jump(); }
+        if(code===40) { prevent(e); slide(); }
+      });
+
+      // canvas tap: left/right half changes lane
+      c.addEventListener('click', function(e){
+        if(!state.running){ reset(); return; }
+        var rect = c.getBoundingClientRect();
+        var x = (e.clientX - rect.left) * (W / rect.width);
+        if(x < W/2) moveLane(-1); else moveLane(1);
+      });
+
+      // swipe (touch)
+      var sx=0, sy=0, st=0;
+      c.addEventListener('touchstart', function(e){
+        prevent(e);
+        if(!state.running){ reset(); return; }
+        var t = e.touches && e.touches[0];
+        if(!t) return;
+        sx = t.clientX; sy = t.clientY; st = Date.now();
+      }, {passive:false});
+
+      c.addEventListener('touchend', function(e){
+        prevent(e);
+        var et = Date.now();
+        var dtm = et - st;
+        // get last changed touch? use changedTouches
+        var t = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+        if(!t) return;
+        var dx = t.clientX - sx;
+        var dy = t.clientY - sy;
+
+        var adx = Math.abs(dx), ady = Math.abs(dy);
+        if(dtm > 600) return;
+
+        if(adx > 35 && adx > ady){
+          if(dx < 0) moveLane(-1); else moveLane(1);
+        } else if(ady > 35 && ady > adx){
+          if(dy < 0) jump(); else slide();
+        }
+      }, {passive:false});
+
+      reset();
+      loop();
+    })();
+  </script>
+</body>
+</html>

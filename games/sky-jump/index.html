@@ -4,42 +4,53 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
   <meta name="msapplication-tap-highlight" content="no" />
-  <title>Sky Jump</title>
+  <title>Neon Blaster</title>
   <style>
     *{box-sizing:border-box} html,body{height:100%;margin:0;font-family:Segoe UI,Arial}
-    body{background:#111;color:#eee;display:flex;align-items:center;justify-content:center;padding:10px}
-    .wrap{width:380px;max-width:100%}
+    body{background:#0b0b12;color:#e5e7eb;display:flex;align-items:center;justify-content:center;padding:10px}
+    .wrap{width:420px;max-width:100%}
     .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-    .btn{border:1px solid #333;background:#1b1b1b;color:#eee;padding:8px 10px;border-radius:10px;text-decoration:none}
-    .card{border:1px solid #333;background:#171717;border-radius:16px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
-    canvas{width:100%;height:auto;border-radius:12px;border:1px solid #2a2a2a;background:#0f1115;display:block}
-    .row{display:flex;gap:8px;margin-top:10px}
-    .pill{flex:1;border:1px solid #333;background:#1b1b1b;color:#eee;padding:10px 12px;border-radius:999px}
+    .btn{border:1px solid rgba(255,255,255,.12);background:#111222;color:#e5e7eb;padding:8px 10px;border-radius:10px;text-decoration:none}
+    .card{border:1px solid rgba(255,255,255,.12);background:rgba(12,12,20,.85);border-radius:16px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+    canvas{width:100%;height:auto;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:#05050a;display:block}
+    .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+    .pill{flex:1;min-width:110px;border:1px solid rgba(255,255,255,.12);background:#111222;color:#e5e7eb;padding:10px 12px;border-radius:999px}
     .hint{font-size:12px;opacity:.82;margin-top:8px;line-height:1.35}
+    .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:12px;opacity:.9}
+    .chip{border:1px solid rgba(255,255,255,.12);background:#0d0d16;border-radius:999px;padding:6px 10px}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="top">
-      <div><b>Sky Jump</b> <span style="opacity:.75;font-size:12px;">(tap trái/phải để điều hướng)</span></div>
+      <div><b>Neon Blaster</b> <span style="opacity:.75;font-size:12px;">(vector / glow shooter)</span></div>
       <a class="btn" href="../../index.html#tab=game">← Back</a>
     </div>
 
     <div class="card">
-      <canvas id="c" width="360" height="520"></canvas>
+      <canvas id="c" width="360" height="560"></canvas>
+
       <div class="row">
         <button class="pill" id="leftBtn">LEFT</button>
         <button class="pill" id="rightBtn">RIGHT</button>
         <button class="pill" id="restartBtn">RESTART</button>
       </div>
+
+      <div class="chips">
+        <div class="chip">Touch: kéo ship để di chuyển</div>
+        <div class="chip">Auto-fire</div>
+        <div class="chip">Né meteor</div>
+      </div>
+
       <div class="hint">
-        Fixes: camera mượt hơn, collision “đạp platform” chuẩn (dựa vào crossing), không giật/bug rơi.<br>
-        Điều khiển: tap/click nửa trái-phải canvas, hoặc ← →, hoặc nút.
+        Mục tiêu: sống lâu, bắn càng nhiều càng tốt. Tốc độ sẽ tăng dần.<br>
+        Tip: kéo nhẹ, đừng giật mạnh (WP8 trình duyệt cũ).
       </div>
     </div>
   </div>
 
   <script>
+    // rAF polyfill (WP/IE friendly)
     window.requestAnimationFrame = window.requestAnimationFrame ||
       window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame ||
       function(cb){ return setTimeout(function(){ cb(Date.now()); }, 1000/60); };
@@ -52,250 +63,408 @@
       function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
       function rand(a,b){ return a + Math.random()*(b-a); }
 
+      // ======= persistent =======
       var best = 0;
-      try{ best = parseInt(localStorage.getItem('sj_best')||'0',10)||0; }catch(e){}
+      try{ best = parseInt(localStorage.getItem('nb_best')||'0',10) || 0; }catch(e){}
 
-      // World coordinates: y increases downward (like canvas).
-      // cameraY = world y at top of screen.
-      var cameraY = 0;
+      // ======= game state =======
+      var running = true;
+      var score = 0;
+      var levelT = 0;
+      var fireT = 0;
+      var shakeT = 0;
+
+      // keep particles low for Lumia
+      var MAX_PART = 70;
 
       var player = {
-        x: W/2,
-        y: 360,   // world y
-        r: 12,
+        x: W/2, y: H-70,
         vx: 0,
-        vy: -300  // px/s
+        r: 12
       };
 
-      var gravity = 1200;    // px/s^2
-      var jumpV = -720;      // px/s
-      var accel = 1250;      // px/s^2
-      var damp = 0.88;
+      var bullets = [];   // {x,y,vy}
+      var meteors = [];   // {x,y,vx,vy,r,life}
+      var parts = [];     // {x,y,vx,vy,life}
+      var stars = [];     // {x,y,s}
 
-      var dir = 0; // -1,0,1
-
-      var platforms = [];
-      var nextPlatY = 450; // will go upward (smaller y)
-      var score = 0;
-      var running = true;
-
-      function spawnPlatform(atY){
-        var w = rand(68, 120);
-        var x = rand(10, W - 10 - w);
-        platforms.push({x:x, y:atY, w:w, h:10});
+      for(var i=0;i<48;i++){
+        stars.push({ x: rand(0,W), y: rand(0,H), s: rand(0.4,1.5) });
       }
 
       function reset(){
-        platforms = [];
-        cameraY = 0;
-        score = 0;
         running = true;
+        score = 0;
+        levelT = 0;
+        fireT = 0;
+        shakeT = 0;
 
-        player.x = W/2;
-        player.y = 360;
-        player.vx = 0;
-        player.vy = -330;
+        player.x = W/2; player.vx = 0;
 
-        // seed platforms from bottom to top
-        nextPlatY = 460;
-        for(var i=0;i<14;i++){
-          spawnPlatform(nextPlatY);
-          nextPlatY -= rand(55, 85); // go up (smaller y)
+        bullets = [];
+        meteors = [];
+        parts = [];
+      }
+
+      function spawnMeteor(){
+        var r = rand(12, 22);
+        var x = rand(20, W-20);
+        var y = -40;
+        var vy = rand(170, 240) + (score*0.6);
+        var vx = rand(-30, 30);
+        meteors.push({ x:x, y:y, vx:vx, vy:vy, r:r, life: 1 });
+      }
+
+      function burst(x,y, n){
+        n = n || 10;
+        for(var i=0;i<n;i++){
+          if(parts.length > MAX_PART) break;
+          parts.push({
+            x:x, y:y,
+            vx: rand(-140,140),
+            vy: rand(-180,80),
+            life: rand(0.25, 0.6)
+          });
         }
+      }
+
+      function circleHit(ax,ay,ar, bx,by,br){
+        var dx = ax-bx, dy = ay-by;
+        var rr = ar+br;
+        return (dx*dx + dy*dy) <= rr*rr;
+      }
+
+      // ======= input =======
+      var dir = 0; // -1 / 1
+      document.getElementById('leftBtn').onmousedown = function(){ dir = -1; };
+      document.getElementById('rightBtn').onmousedown = function(){ dir = 1; };
+      document.getElementById('leftBtn').onmouseup = function(){ dir = 0; };
+      document.getElementById('rightBtn').onmouseup = function(){ dir = 0; };
+      document.getElementById('leftBtn').ontouchstart = function(e){ if(e&&e.preventDefault)e.preventDefault(); dir=-1; };
+      document.getElementById('rightBtn').ontouchstart = function(e){ if(e&&e.preventDefault)e.preventDefault(); dir=1; };
+      document.getElementById('leftBtn').ontouchend = function(e){ if(e&&e.preventDefault)e.preventDefault(); dir=0; };
+      document.getElementById('rightBtn').ontouchend = function(e){ if(e&&e.preventDefault)e.preventDefault(); dir=0; };
+
+      document.getElementById('restartBtn').onclick = reset;
+
+      document.addEventListener('keydown', function(e){
+        e = e || window.event;
+        var k = e.keyCode || 0;
+        if(k===37) dir = -1;
+        if(k===39) dir = 1;
+        if(k===32 && !running) reset();
+      });
+      document.addEventListener('keyup', function(e){
+        e = e || window.event;
+        var k = e.keyCode || 0;
+        if(k===37 || k===39) dir = 0;
+      });
+
+      // drag ship on canvas
+      var dragging = false;
+      function canvasToLocalX(clientX){
+        var rect = c.getBoundingClientRect();
+        return (clientX - rect.left) * (W / rect.width);
+      }
+      c.addEventListener('mousedown', function(e){
+        dragging = true;
+        player.x = clamp(canvasToLocalX(e.clientX), 24, W-24);
+      });
+      window.addEventListener('mouseup', function(){ dragging = false; });
+
+      c.addEventListener('mousemove', function(e){
+        if(!dragging) return;
+        player.x = clamp(canvasToLocalX(e.clientX), 24, W-24);
+      });
+
+      c.addEventListener('touchstart', function(e){
+        if(e && e.preventDefault) e.preventDefault();
+        if(!running){ reset(); return; }
+        dragging = true;
+        var t = e.touches && e.touches[0];
+        if(t) player.x = clamp(canvasToLocalX(t.clientX), 24, W-24);
+      }, {passive:false});
+
+      c.addEventListener('touchmove', function(e){
+        if(e && e.preventDefault) e.preventDefault();
+        if(!dragging) return;
+        var t = e.touches && e.touches[0];
+        if(t) player.x = clamp(canvasToLocalX(t.clientX), 24, W-24);
+      }, {passive:false});
+
+      c.addEventListener('touchend', function(e){
+        if(e && e.preventDefault) e.preventDefault();
+        dragging = false;
+      }, {passive:false});
+
+      // ======= render helpers (neon glow) =======
+      function glowLine(x1,y1,x2,y2, w){
+        w = w || 2;
+        // base glow layers (no composite to keep IE safe)
+        ctx.globalAlpha = 0.16;
+        ctx.lineWidth = w*6; ctx.stroke();
+        ctx.globalAlpha = 0.28;
+        ctx.lineWidth = w*3.2; ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = w; ctx.stroke();
+      }
+
+      function drawShip(x,y){
+        // triangle vector ship
+        ctx.save();
+        ctx.translate(x,y);
+
+        ctx.beginPath();
+        ctx.moveTo(0,-18);
+        ctx.lineTo(12,14);
+        ctx.lineTo(0,8);
+        ctx.lineTo(-12,14);
+        ctx.closePath();
+
+        ctx.strokeStyle = '#22c55e';
+        glowLine(0,0,0,0,2); // no-op just to ensure stroke state (safe)
+
+        ctx.strokeStyle = '#2dd4ff';
+        // manual glow for polygon
+        ctx.globalAlpha = 0.18; ctx.lineWidth = 10; ctx.stroke();
+        ctx.globalAlpha = 0.35; ctx.lineWidth = 5; ctx.stroke();
+        ctx.globalAlpha = 1;    ctx.lineWidth = 2; ctx.stroke();
+
+        // core
+        ctx.fillStyle = 'rgba(34,197,94,0.12)';
+        ctx.fill();
+
+        // cockpit dot
+        ctx.beginPath();
+        ctx.fillStyle = '#facc15';
+        ctx.arc(0,-4,2.5,0,Math.PI*2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function drawMeteor(m){
+        ctx.save();
+        ctx.translate(m.x, m.y);
+
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(239,68,68,0.18)';
+        ctx.arc(0,0,m.r,0,Math.PI*2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#ef4444';
+        ctx.globalAlpha = 0.18; ctx.lineWidth = 10; ctx.stroke();
+        ctx.globalAlpha = 0.35; ctx.lineWidth = 5;  ctx.stroke();
+        ctx.globalAlpha = 1;    ctx.lineWidth = 2;  ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0,0,m.r,0,Math.PI*2);
+        ctx.stroke();
+
+        // cracks
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(-m.r*0.6, -m.r*0.1);
+        ctx.lineTo(m.r*0.5, m.r*0.2);
+        ctx.moveTo(-m.r*0.2, m.r*0.6);
+        ctx.lineTo(m.r*0.2, -m.r*0.6);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawBullet(b){
+        ctx.save();
+        ctx.translate(b.x, b.y);
+
+        ctx.strokeStyle = '#facc15';
+        ctx.beginPath();
+        ctx.moveTo(0, 10);
+        ctx.lineTo(0, -10);
+        ctx.globalAlpha = 0.18; ctx.lineWidth = 10; ctx.stroke();
+        ctx.globalAlpha = 0.35; ctx.lineWidth = 5;  ctx.stroke();
+        ctx.globalAlpha = 1;    ctx.lineWidth = 2;  ctx.stroke();
+
+        ctx.restore();
       }
 
       function gameOver(){
         running = false;
         if(score > best){
           best = score;
-          try{ localStorage.setItem('sj_best', String(best)); }catch(e){}
+          try{ localStorage.setItem('nb_best', String(best)); }catch(e){}
         }
       }
 
-      function update(dt){
-        if(!running) return;
+      // ======= main loop =======
+      var last = Date.now();
+      function step(){
+        var now = Date.now();
+        var dt = (now - last) / 1000;
+        last = now;
+        dt = clamp(dt, 0, 0.033);
 
-        // controls
-        player.vx += dir * accel * dt;
-        player.vx *= damp;
-        player.x += player.vx * dt;
+        // update
+        if(running){
+          // soft keyboard lane move (still allow drag to override)
+          if(!dragging){
+            player.vx += dir * 1200 * dt;
+            player.vx *= 0.86;
+            player.x += player.vx * dt;
+            player.x = clamp(player.x, 24, W-24);
+          } else {
+            player.vx = 0;
+          }
 
-        // wrap x
-        if(player.x < -player.r) player.x = W + player.r;
-        if(player.x > W + player.r) player.x = -player.r;
+          // spawn rate increases over time
+          levelT += dt;
+          var spawnEvery = clamp(0.55 - (levelT/30), 0.22, 0.55);
+          if(Math.random() < dt / spawnEvery){
+            spawnMeteor();
+          }
 
-        // physics
-        var prevY = player.y;
-        var prevBottom = prevY + player.r;
+          // auto-fire
+          fireT += dt;
+          if(fireT >= 0.16){
+            fireT = 0;
+            bullets.push({ x: player.x, y: player.y-18, vy: -820 });
+          }
 
-        player.vy += gravity * dt;
-        player.y += player.vy * dt;
+          // move stars
+          for(var s=0;s<stars.length;s++){
+            stars[s].y += (70 + score*0.02) * dt * stars[s].s;
+            if(stars[s].y > H+5){ stars[s].y = -5; stars[s].x = rand(0,W); }
+          }
 
-        var bottom = player.y + player.r;
+          // bullets
+          for(var i=0;i<bullets.length;i++){
+            bullets[i].y += bullets[i].vy * dt;
+          }
+          while(bullets.length && bullets[0].y < -40) bullets.shift();
 
-        // collision with platforms only when falling
-        if(player.vy > 0){
-          for(var i=0;i<platforms.length;i++){
-            var p = platforms[i];
-            var top = p.y;
-            var withinX = (player.x > p.x - player.r) && (player.x < p.x + p.w + player.r);
+          // meteors
+          for(var j=0;j<meteors.length;j++){
+            var m = meteors[j];
+            m.x += m.vx * dt;
+            m.y += m.vy * dt;
+            // bounce sides a bit
+            if(m.x < 15 || m.x > W-15) m.vx *= -1;
+          }
+          while(meteors.length && meteors[0].y > H+80) meteors.shift();
 
-            // crossing platform top line
-            if(withinX && prevBottom <= top && bottom >= top && (player.y - player.r) < top + p.h){
-              player.y = top - player.r;
-              player.vy = jumpV;
-              // score based on highest camera (moving up => cameraY decreases)
+          // particles
+          for(var p=0;p<parts.length;p++){
+            parts[p].x += parts[p].vx * dt;
+            parts[p].y += parts[p].vy * dt;
+            parts[p].vy += 560 * dt;
+            parts[p].life -= dt;
+          }
+          for(var pr=parts.length-1; pr>=0; pr--){
+            if(parts[pr].life <= 0) parts.splice(pr,1);
+          }
+
+          // collisions bullet-meteor
+          for(var mi=meteors.length-1; mi>=0; mi--){
+            var mm = meteors[mi];
+            var hit = false;
+
+            for(var bi=bullets.length-1; bi>=0; bi--){
+              var bb = bullets[bi];
+              if(circleHit(bb.x, bb.y, 4, mm.x, mm.y, mm.r)){
+                bullets.splice(bi,1);
+                hit = true;
+                break;
+              }
+            }
+
+            if(hit){
+              meteors.splice(mi,1);
+              score += 12;
+              shakeT = 0.12;
+              burst(mm.x, mm.y, 12);
+            }
+          }
+
+          // collision player-meteor
+          for(var k=0;k<meteors.length;k++){
+            var mo = meteors[k];
+            if(circleHit(player.x, player.y-6, player.r, mo.x, mo.y, mo.r*0.92)){
+              burst(player.x, player.y, 18);
+              gameOver();
               break;
             }
           }
+
+          // score over time
+          score += Math.floor(9 * dt);
         }
 
-        // camera follow: keep player around 40% from top
-        var screenY = player.y - cameraY;
-        var targetCam = cameraY;
-        var desired = H * 0.42;
+        // draw
+        ctx.save();
 
-        if(screenY < desired){
-          targetCam = player.y - desired;
+        // screen shake
+        if(shakeT > 0){
+          shakeT = Math.max(0, shakeT - dt);
+          var sx = rand(-3,3) * (shakeT/0.12);
+          var sy = rand(-3,3) * (shakeT/0.12);
+          ctx.translate(sx, sy);
         }
-        // smooth
-        cameraY += (targetCam - cameraY) * 0.14;
-
-        // generate more platforms above (smaller y)
-        while(nextPlatY > cameraY - 260){
-          spawnPlatform(nextPlatY);
-          nextPlatY -= rand(55, 90);
-        }
-
-        // cleanup below
-        var keep = [];
-        for(var j=0;j<platforms.length;j++){
-          if(platforms[j].y < cameraY + H + 140) keep.push(platforms[j]);
-        }
-        platforms = keep;
-
-        // score = max height climbed => -minCameraY
-        score = Math.max(score, Math.floor((-cameraY) / 10));
-
-        // game over if player fell below bottom
-        if(player.y - cameraY > H + 90){
-          gameOver();
-        }
-      }
-
-      function draw(){
-        ctx.clearRect(0,0,W,H);
 
         // bg
-        ctx.fillStyle = '#0f1115';
+        ctx.clearRect(0,0,W,H);
+        ctx.fillStyle = '#05050a';
         ctx.fillRect(0,0,W,H);
 
         // stars
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        for(var i=0;i<22;i++){
-          var sx = (i*41 + (-cameraY*0.25)) % W;
-          var sy = (i*67 + (-cameraY*0.18)) % H;
-          ctx.fillRect(sx, sy, 2, 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.10)';
+        for(var st=0; st<stars.length; st++){
+          ctx.fillRect(stars[st].x, stars[st].y, 2, 2);
         }
 
-        // platforms
-        for(var i=0;i<platforms.length;i++){
-          var p = platforms[i];
-          var y = p.y - cameraY;
-          if(y < -20 || y > H+20) continue;
-          ctx.fillStyle = '#2dd4ff';
-          ctx.fillRect(p.x, y, p.w, p.h);
-          ctx.fillStyle = 'rgba(0,0,0,0.35)';
-          ctx.fillRect(p.x, y+p.h, p.w, 2);
-        }
-
-        // player
-        var py = player.y - cameraY;
-        ctx.beginPath();
-        ctx.fillStyle = '#f97316';
-        ctx.arc(player.x, py, player.r, 0, Math.PI*2);
-        ctx.fill();
-        ctx.fillStyle = '#0b0f12';
-        ctx.fillRect(player.x+2, py-4, 4, 4);
-
-        // UI
+        // HUD
         ctx.fillStyle = '#e5e7eb';
         ctx.font = 'bold 16px Segoe UI, Arial';
         ctx.fillText('Score: ' + score, 12, 24);
         ctx.font = '12px Segoe UI, Arial';
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
         ctx.fillText('Best: ' + best, 12, 42);
 
+        // bullets
+        for(var b=0;b<bullets.length;b++) drawBullet(bullets[b]);
+
+        // meteors
+        for(var m=0;m<meteors.length;m++) drawMeteor(meteors[m]);
+
+        // particles
+        for(var pp=0; pp<parts.length; pp++){
+          var pa = parts[pp];
+          var a = clamp(pa.life/0.6, 0, 1);
+          ctx.globalAlpha = a;
+          ctx.fillStyle = '#2dd4ff';
+          ctx.fillRect(pa.x, pa.y, 2, 2);
+          ctx.globalAlpha = 1;
+        }
+
+        // ship
+        drawShip(player.x, player.y);
+
         if(!running){
-          ctx.fillStyle = 'rgba(0,0,0,0.45)';
+          ctx.fillStyle = 'rgba(0,0,0,0.55)';
           ctx.fillRect(0,0,W,H);
           ctx.fillStyle = '#fff';
           ctx.font = 'bold 22px Segoe UI, Arial';
-          ctx.fillText('GAME OVER', 110, 250);
+          ctx.fillText('GAME OVER', 105, 260);
           ctx.font = '13px Segoe UI, Arial';
-          ctx.fillText('Tap để chơi lại', 128, 280);
+          ctx.fillText('Tap / Space / Restart để chơi lại', 68, 290);
         }
+
+        ctx.restore();
+        requestAnimationFrame(step);
       }
-
-      var lastTs = Date.now();
-      function loop(){
-        var now = Date.now();
-        var dt = (now - lastTs) / 1000;
-        lastTs = now;
-        dt = clamp(dt, 0, 0.033);
-
-        update(dt);
-        draw();
-        requestAnimationFrame(loop);
-      }
-
-      // Controls
-      function setDir(d){ dir = d; }
-      function prevent(e){ if(e && e.preventDefault) e.preventDefault(); return false; }
-
-      document.getElementById('leftBtn').onmousedown = function(){ setDir(-1); };
-      document.getElementById('rightBtn').onmousedown = function(){ setDir(1); };
-      document.getElementById('leftBtn').onmouseup = function(){ setDir(0); };
-      document.getElementById('rightBtn').onmouseup = function(){ setDir(0); };
-      document.getElementById('leftBtn').ontouchstart = function(e){ prevent(e); setDir(-1); };
-      document.getElementById('rightBtn').ontouchstart = function(e){ prevent(e); setDir(1); };
-      document.getElementById('leftBtn').ontouchend = function(e){ prevent(e); setDir(0); };
-      document.getElementById('rightBtn').ontouchend = function(e){ prevent(e); setDir(0); };
-
-      c.addEventListener('click', function(e){
-        if(!running){ reset(); return; }
-        var rect = c.getBoundingClientRect();
-        var x = (e.clientX - rect.left) * (W / rect.width);
-        dir = (x < W/2) ? -1 : 1;
-        setTimeout(function(){ dir = 0; }, 140);
-      });
-
-      c.addEventListener('touchstart', function(e){
-        if(!running){ reset(); return; }
-        prevent(e);
-        var t = e.touches && e.touches[0];
-        if(!t) return;
-        var rect = c.getBoundingClientRect();
-        var x = (t.clientX - rect.left) * (W / rect.width);
-        dir = (x < W/2) ? -1 : 1;
-        setTimeout(function(){ dir = 0; }, 140);
-      }, {passive:false});
-
-      document.addEventListener('keydown', function(e){
-        e = e || window.event;
-        var code = e.keyCode || 0;
-        if(code===37) dir = -1;
-        if(code===39) dir = 1;
-      });
-      document.addEventListener('keyup', function(e){
-        e = e || window.event;
-        var code = e.keyCode || 0;
-        if(code===37 || code===39) dir = 0;
-      });
-
-      document.getElementById('restartBtn').onclick = reset;
 
       reset();
-      loop();
+      step();
     })();
   </script>
 </body>
