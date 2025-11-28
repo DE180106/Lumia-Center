@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <meta name="msapplication-tap-highlight" content="no" />
+  <title>Mini Chess (Knight Jump)</title>
+  <style>
+    *{box-sizing:border-box} html,body{height:100%;margin:0;font-family:Segoe UI,Arial}
+    body{background:#111;color:#eee;display:flex;align-items:center;justify-content:center;padding:10px}
+    .wrap{width:380px;max-width:100%}
+    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .btn{border:1px solid #333;background:#1b1b1b;color:#eee;padding:8px 10px;border-radius:10px;text-decoration:none}
+    .card{border:1px solid #333;background:#171717;border-radius:16px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+    .stat{display:flex;justify-content:space-between;font-size:12px;opacity:.92;margin:6px 0 10px}
+    .board{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+    .cell{
+      height:62px;border-radius:12px;border:1px solid #2a2a2a;background:#0f1115;
+      display:flex;align-items:center;justify-content:center;font-weight:900;user-select:none;
+      cursor:pointer;position:relative;
+    }
+    .cell.alt{background:#121823}
+    .cell.goal{outline:3px solid #2dd4ff}
+    .cell.knight{background:#22c55e;color:#001018;border-color:#1c7f43}
+    .cell.valid{background:#1f2430;border-color:#2dd4ff}
+    .dot{width:10px;height:10px;border-radius:999px;background:#2dd4ff;opacity:.95;position:absolute;bottom:8px;right:8px}
+    .row{display:flex;gap:8px;margin-top:10px}
+    .pill{flex:1;border:1px solid #333;background:#1b1b1b;color:#eee;padding:10px 12px;border-radius:999px}
+    .toast{margin-top:10px;border:1px solid #2a2a2a;background:#0f1115;border-radius:12px;padding:8px 10px;font-size:12px;opacity:.92}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div><b>Mini Chess</b> <span style="opacity:.75;font-size:12px;">(Knight Jump)</span></div>
+      <a class="btn" href="../../index.html#tab=game">← Back</a>
+    </div>
+
+    <div class="card">
+      <div class="stat">
+        <div>Moves: <b id="moves">0</b></div>
+        <div>Min: <b id="minMoves">-</b></div>
+        <div>Best: <b id="best">-</b></div>
+      </div>
+
+      <div class="board" id="board"></div>
+
+      <div class="row">
+        <button class="pill" id="newGoal">NEW GOAL</button>
+        <button class="pill" id="reset">RESET</button>
+      </div>
+
+      <div class="toast" id="toast">Chạm ô có chấm xanh để nhảy đúng luật Knight.</div>
+    </div>
+  </div>
+
+  <script>
+    window.requestAnimationFrame = window.requestAnimationFrame ||
+      window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame ||
+      function(cb){ return setTimeout(function(){ cb(Date.now()); }, 1000/60); };
+
+    (function(){
+      var N = 5;
+      var board = document.getElementById('board');
+      var movesEl = document.getElementById('moves');
+      var bestEl = document.getElementById('best');
+      var minEl = document.getElementById('minMoves');
+      var toast = document.getElementById('toast');
+
+      var best = 9999;
+      try{ best = parseInt(localStorage.getItem('mc_best')||'9999',10) || 9999; }catch(e){}
+      bestEl.textContent = (best===9999 ? '-' : best);
+
+      var knight = {r:2,c:2};
+      var goal = {r:0,c:0};
+      var moves = 0;
+
+      var DELTA = [
+        {dr:2,dc:1},{dr:2,dc:-1},{dr:-2,dc:1},{dr:-2,dc:-1},
+        {dr:1,dc:2},{dr:1,dc:-2},{dr:-1,dc:2},{dr:-1,dc:-2}
+      ];
+
+      function say(msg){ toast.textContent = msg; }
+      function inb(r,c){ return r>=0 && r<N && c>=0 && c<N; }
+      function posKey(r,c){ return r + "," + c; }
+
+      function isValidMove(r,c){
+        var dr = Math.abs(r - knight.r);
+        var dc = Math.abs(c - knight.c);
+        return (dr===2 && dc===1) || (dr===1 && dc===2);
+      }
+
+      function validSetFromKnight(){
+        var set = {};
+        for(var i=0;i<DELTA.length;i++){
+          var r = knight.r + DELTA[i].dr;
+          var c = knight.c + DELTA[i].dc;
+          if(inb(r,c)) set[posKey(r,c)] = true;
+        }
+        return set;
+      }
+
+      // BFS min moves từ knight tới goal (để không bị “goal khó/bug”)
+      function computeMinMoves(from, to){
+        if(from.r===to.r && from.c===to.c) return 0;
+        var q = [];
+        var seen = {};
+        q.push({r:from.r,c:from.c,d:0});
+        seen[posKey(from.r,from.c)] = true;
+
+        while(q.length){
+          var cur = q.shift();
+          for(var i=0;i<DELTA.length;i++){
+            var nr = cur.r + DELTA[i].dr;
+            var nc = cur.c + DELTA[i].dc;
+            if(!inb(nr,nc)) continue;
+            var k = posKey(nr,nc);
+            if(seen[k]) continue;
+            if(nr===to.r && nc===to.c) return cur.d + 1;
+            seen[k] = true;
+            q.push({r:nr,c:nc,d:cur.d+1});
+          }
+        }
+        return null; // unreachable (trên 5x5 thường vẫn reachable)
+      }
+
+      function randInt(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+
+      function newGoal(){
+        // chọn goal sao cho minMoves != null và != 0
+        var tries = 0;
+        while(tries++ < 200){
+          var r = randInt(0,N-1), c = randInt(0,N-1);
+          if(r===knight.r && c===knight.c) continue;
+          var mm = computeMinMoves(knight, {r:r,c:c});
+          if(mm !== null){
+            goal.r = r; goal.c = c;
+            minEl.textContent = mm;
+            render();
+            say("Goal mới! Min moves = " + mm);
+            return;
+          }
+        }
+        // fallback
+        goal.r = 0; goal.c = 0;
+        minEl.textContent = computeMinMoves(knight, goal) || '-';
+        render();
+      }
+
+      function reset(){
+        knight.r = 2; knight.c = 2;
+        moves = 0;
+        movesEl.textContent = moves;
+        newGoal();
+      }
+
+      function win(){
+        var mm = parseInt(minEl.textContent,10);
+        if(moves < best){
+          best = moves;
+          bestEl.textContent = best;
+          try{ localStorage.setItem('mc_best', String(best)); }catch(e){}
+        }
+        say("WIN! Bạn đi " + moves + " bước (Min: " + (isNaN(mm)? '-' : mm) + "). Goal mới đã tạo.");
+        moves = 0;
+        movesEl.textContent = moves;
+        newGoal();
+      }
+
+      function render(){
+        var valid = validSetFromKnight();
+        board.innerHTML = "";
+
+        for(var r=0;r<N;r++){
+          for(var c=0;c<N;c++){
+            var cell = document.createElement('div');
+            var cls = "cell" + (((r+c)%2===1) ? " alt" : "");
+
+            var isK = (r===knight.r && c===knight.c);
+            var isG = (r===goal.r && c===goal.c);
+            var isV = !!valid[posKey(r,c)];
+
+            if(isV) cls += " valid";
+            if(isG) cls += " goal";
+            if(isK) cls = "cell knight";
+
+            cell.className = cls;
+            cell.setAttribute("data-r", r);
+            cell.setAttribute("data-c", c);
+
+            if(isK) cell.textContent = "N";
+            else if(isG) cell.textContent = "G";
+
+            if(isV && !isK && !isG){
+              var dot = document.createElement("div");
+              dot.className = "dot";
+              cell.appendChild(dot);
+            }
+
+            board.appendChild(cell);
+          }
+        }
+
+        // update min move whenever knight moves
+        var mm2 = computeMinMoves(knight, goal);
+        minEl.textContent = (mm2===null ? '-' : mm2);
+      }
+
+      board.onclick = function(e){
+        var t = e.target;
+        while(t && t !== board && (!t.getAttribute || t.getAttribute("data-r")===null)){
+          t = t.parentNode;
+        }
+        if(!t || t===board) return;
+
+        var r = parseInt(t.getAttribute("data-r"),10);
+        var c = parseInt(t.getAttribute("data-c"),10);
+
+        if(isValidMove(r,c)){
+          knight.r = r; knight.c = c;
+          moves++;
+          movesEl.textContent = moves;
+          render();
+
+          if(r===goal.r && c===goal.c) win();
+          else say("OK! Tiếp tục.");
+        } else {
+          say("Sai luật Knight 😅 Chỉ được nhảy theo L (2+1).");
+        }
+      };
+
+      document.getElementById('newGoal').onclick = newGoal;
+      document.getElementById('reset').onclick = reset;
+
+      reset();
+    })();
+  </script>
+</body>
+</html>

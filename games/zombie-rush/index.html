@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <meta name="msapplication-tap-highlight" content="no" />
+  <title>Zombie Rush</title>
+  <style>
+    *{box-sizing:border-box} html,body{height:100%;margin:0;font-family:Segoe UI,Arial}
+    body{background:#111;color:#eee;display:flex;align-items:center;justify-content:center;padding:10px}
+    .wrap{width:380px;max-width:100%}
+    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .btn{border:1px solid #333;background:#1b1b1b;color:#eee;padding:8px 10px;border-radius:10px;text-decoration:none}
+    .card{border:1px solid #333;background:#171717;border-radius:16px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+    canvas{width:100%;height:auto;border-radius:12px;border:1px solid #2a2a2a;background:#0f1115;display:block}
+    .row{display:flex;gap:8px;margin-top:10px}
+    .pill{flex:1;border:1px solid #333;background:#1b1b1b;color:#eee;padding:10px 12px;border-radius:999px}
+    .hint{font-size:12px;opacity:.82;margin-top:8px;line-height:1.35}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div><b>Zombie Rush</b> <span style="opacity:.75;font-size:12px;">(tap / space để nhảy)</span></div>
+      <a class="btn" href="../../index.html#tab=game">← Back</a>
+    </div>
+
+    <div class="card">
+      <canvas id="c" width="360" height="520"></canvas>
+      <div class="row">
+        <button class="pill" id="jumpBtn">JUMP</button>
+        <button class="pill" id="restartBtn">RESTART</button>
+      </div>
+      <div class="hint">
+        Fixes: va chạm chuẩn hơn, spawn theo timer + khoảng cách, input touch ổn.<br>
+        Điều khiển: chạm / JUMP / Space.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // rAF polyfill (WP/IE old friendly)
+    window.requestAnimationFrame = window.requestAnimationFrame ||
+      window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame ||
+      function(cb){ return setTimeout(function(){ cb(Date.now()); }, 1000/60); };
+
+    (function(){
+      var c = document.getElementById('c');
+      var ctx = c.getContext('2d');
+      var W = c.width, H = c.height;
+
+      function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+      function rand(a,b){ return a + Math.random()*(b-a); }
+
+      var groundY = H - 70;
+
+      var best = 0;
+      try{ best = parseInt(localStorage.getItem('zr_best')||'0',10)||0; }catch(e){}
+
+      var state = {
+        running: true,
+        score: 0,
+        t: 0,
+        spawnT: 0,
+        speed: 230, // px/s
+        scroll: 0
+      };
+
+      var player = {
+        x: 70, y: groundY-30,
+        w: 26, h: 30,
+        vy: 0,
+        onGround: true,
+        jumpBuffer: 0,   // ms
+        coyote: 0        // ms
+      };
+
+      var obstacles = [];
+
+      function reset(){
+        obstacles = [];
+        state.running = true;
+        state.score = 0;
+        state.t = 0;
+        state.spawnT = 0;
+        state.speed = 230;
+        state.scroll = 0;
+
+        player.y = groundY - player.h;
+        player.vy = 0;
+        player.onGround = true;
+        player.jumpBuffer = 0;
+        player.coyote = 90; // allow tiny late jump
+
+        // spawn initial obstacles far enough
+        var x = W + 180;
+        for(var i=0;i<3;i++){
+          obstacles.push(makeObs(x));
+          x += rand(160, 230);
+        }
+      }
+
+      function makeObs(x){
+        var w = rand(22, 40);
+        var h = rand(26, 56);
+        return { x:x, y:groundY-h, w:w, h:h, passed:false };
+      }
+
+      function jump(){
+        // buffer jump (helps input feel)
+        player.jumpBuffer = 140;
+        if(!state.running){
+          reset();
+        }
+      }
+
+      function rectHit(a,b){
+        return a.x < b.x + b.w &&
+               a.x + a.w > b.x &&
+               a.y < b.y + b.h &&
+               a.y + a.h > b.y;
+      }
+
+      function update(dt){
+        if(!state.running) return;
+
+        state.t += dt;
+        state.scroll += (state.speed * dt) * 0.18;
+
+        // timers
+        player.jumpBuffer = Math.max(0, player.jumpBuffer - dt*1000);
+        player.coyote = Math.max(0, player.coyote - dt*1000);
+
+        // gravity
+        player.vy += 1900 * dt; // px/s^2
+        player.y += player.vy * dt;
+
+        // ground
+        if(player.y >= groundY - player.h){
+          player.y = groundY - player.h;
+          player.vy = 0;
+          if(!player.onGround) player.coyote = 90;
+          player.onGround = true;
+          player.coyote = 90;
+        } else {
+          if(player.onGround) player.coyote = 90;
+          player.onGround = false;
+        }
+
+        // execute buffered jump if can (on ground or coyote)
+        if(player.jumpBuffer > 0 && (player.onGround || player.coyote > 0)){
+          player.vy = -720; // jump impulse
+          player.onGround = false;
+          player.coyote = 0;
+          player.jumpBuffer = 0;
+        }
+
+        // move obstacles
+        for(var i=0;i<obstacles.length;i++){
+          obstacles[i].x -= state.speed * dt;
+        }
+
+        // scoring when obstacle passed
+        for(var i=0;i<obstacles.length;i++){
+          var o = obstacles[i];
+          if(!o.passed && o.x + o.w < player.x){
+            o.passed = true;
+            state.score++;
+            // speed up gradually
+            if(state.score % 5 === 0) state.speed += 18;
+          }
+        }
+
+        // spawn new obstacles by distance + timer
+        state.spawnT += dt;
+        var last = obstacles.length ? obstacles[obstacles.length-1] : null;
+        var needSpawn = false;
+
+        if(!last) needSpawn = true;
+        else {
+          var gap = last.x - player.x;
+          if(gap < 460 && state.spawnT > 0.55) needSpawn = true;
+        }
+
+        if(needSpawn){
+          var nx = last ? (Math.max(W + 40, last.x + rand(150, 240))) : (W + 200);
+          obstacles.push(makeObs(nx));
+          state.spawnT = 0;
+        }
+
+        // remove offscreen
+        while(obstacles.length && (obstacles[0].x + obstacles[0].w < -40)){
+          obstacles.shift();
+        }
+
+        // collision
+        for(var j=0;j<obstacles.length;j++){
+          if(rectHit(player, obstacles[j])){
+            state.running = false;
+            if(state.score > best){
+              best = state.score;
+              try{ localStorage.setItem('zr_best', String(best)); }catch(e){}
+            }
+            break;
+          }
+        }
+      }
+
+      function draw(){
+        ctx.clearRect(0,0,W,H);
+
+        // background
+        ctx.fillStyle = '#0f1115';
+        ctx.fillRect(0,0,W,H);
+
+        // stars
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        for(var i=0;i<18;i++){
+          var sx = (i*37 + state.scroll*60) % W;
+          var sy = (i*61) % (groundY-40);
+          ctx.fillRect(sx, sy, 2, 2);
+        }
+
+        // ground
+        ctx.fillStyle = '#1f2430';
+        ctx.fillRect(0, groundY, W, H-groundY);
+        ctx.fillStyle = '#2dd4ff';
+        ctx.fillRect(0, groundY, W, 3);
+
+        // player
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(player.x, player.y, player.w, player.h);
+        ctx.fillStyle = '#0b0f12';
+        ctx.fillRect(player.x+17, player.y+8, 5, 5);
+
+        // obstacles
+        for(var i=0;i<obstacles.length;i++){
+          var o = obstacles[i];
+          ctx.fillStyle = '#f97316';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.fillStyle = '#0b0f12';
+          ctx.fillRect(o.x+4, o.y+6, 5, 5);
+          ctx.fillRect(o.x+o.w-10, o.y+6, 5, 5);
+        }
+
+        // UI
+        ctx.fillStyle = '#e5e7eb';
+        ctx.font = 'bold 16px Segoe UI, Arial';
+        ctx.fillText('Score: ' + state.score, 12, 24);
+        ctx.font = '12px Segoe UI, Arial';
+        ctx.fillText('Best: ' + best, 12, 42);
+
+        if(!state.running){
+          ctx.fillStyle = 'rgba(0,0,0,0.45)';
+          ctx.fillRect(0,0,W,H);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 22px Segoe UI, Arial';
+          ctx.fillText('GAME OVER', 105, 250);
+          ctx.font = '13px Segoe UI, Arial';
+          ctx.fillText('Tap / Space để chơi lại', 98, 280);
+        }
+      }
+
+      var lastTs = Date.now();
+      function loop(){
+        var now = Date.now();
+        var dt = (now - lastTs) / 1000;
+        lastTs = now;
+
+        dt = clamp(dt, 0, 0.033); // tránh lag spike
+
+        update(dt);
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      // Controls
+      function prevent(e){ if(e && e.preventDefault) e.preventDefault(); return false; }
+
+      document.addEventListener('keydown', function(e){
+        e = e || window.event;
+        var code = e.keyCode || 0;
+        if(code === 32){ prevent(e); jump(); }
+      });
+
+      c.addEventListener('click', jump);
+      c.addEventListener('touchstart', function(e){ prevent(e); jump(); }, {passive:false});
+      document.getElementById('jumpBtn').onclick = jump;
+      document.getElementById('restartBtn').onclick = reset;
+
+      reset();
+      loop();
+    })();
+  </script>
+</body>
+</html>

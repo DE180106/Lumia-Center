@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <!-- WP8/IE Mobile friendly -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="msapplication-tap-highlight" content="no" />
+  <title>Detail • Lumia Hub</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="app" id="detailPage">
+    <header class="topbar">
+      <div class="brand">
+        <div class="title" id="dpHeaderTitle">Detail</div>
+        <div class="subtitle" id="dpHeaderSub">Lumia Hub</div>
+      </div>
+
+      <div class="actions">
+        <a class="icon-btn link-btn" id="dpBack" href="index.html" title="Back">←</a>
+        <button class="icon-btn" id="toggleTheme" type="button" title="Dark mode" aria-label="Toggle dark mode">
+          <span class="icon">☾</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="detail-page-card" id="dpCard" style="display:none;">
+        <div class="detail-head">
+          <div class="tile big" id="dpTile">G</div>
+          <div class="detail-head-text">
+            <div class="detail-title" id="dpTitle">Title</div>
+            <div class="detail-meta" id="dpMeta">Meta</div>
+            <div class="detail-badges" id="dpBadges"></div>
+          </div>
+        </div>
+
+        <div class="detail-body">
+          <!-- Media area -->
+          <div class="detail-section" id="dpMediaArea">
+            <div class="detail-label" id="dpMediaLabel">Nội dung</div>
+
+            <!-- Music -->
+            <div class="media-box" id="dpMusicBox" style="display:none;">
+              <audio id="dpAudio" controls preload="none"></audio>
+              <div class="media-note" id="dpAudioNote"></div>
+            </div>
+
+            <!-- Game -->
+            <div class="media-box" id="dpGameBox" style="display:none;">
+              <div class="media-note">Bấm Open để vào trang game.</div>
+              <div class="media-link" id="dpGameUrl"></div>
+            </div>
+
+            <!-- Story -->
+            <div class="media-box" id="dpStoryBox" style="display:none;">
+              <div class="story-content" id="dpStory"></div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <div class="detail-label">Mô tả</div>
+            <div class="detail-desc" id="dpDesc"></div>
+          </div>
+
+          <div class="detail-section">
+            <div class="detail-label">Thông tin</div>
+            <ul class="detail-list" id="dpInfo"></ul>
+          </div>
+
+          <div class="detail-actions">
+            <button class="pill-btn" id="dpPrimaryBtn" type="button">Open</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="empty" id="dpEmpty">
+        <div class="empty-title">Không tìm thấy nội dung</div>
+        <div class="empty-sub">Thiếu hoặc sai id. Bấm Back để về trang chính.</div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="foot-left">Detail</div>
+      <div class="foot-right" id="dpStatus">—</div>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

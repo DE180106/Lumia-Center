@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <meta name="msapplication-tap-highlight" content="no" />
+  <title>Sky Jump</title>
+  <style>
+    *{box-sizing:border-box} html,body{height:100%;margin:0;font-family:Segoe UI,Arial}
+    body{background:#111;color:#eee;display:flex;align-items:center;justify-content:center;padding:10px}
+    .wrap{width:380px;max-width:100%}
+    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .btn{border:1px solid #333;background:#1b1b1b;color:#eee;padding:8px 10px;border-radius:10px;text-decoration:none}
+    .card{border:1px solid #333;background:#171717;border-radius:16px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+    canvas{width:100%;height:auto;border-radius:12px;border:1px solid #2a2a2a;background:#0f1115;display:block}
+    .row{display:flex;gap:8px;margin-top:10px}
+    .pill{flex:1;border:1px solid #333;background:#1b1b1b;color:#eee;padding:10px 12px;border-radius:999px}
+    .hint{font-size:12px;opacity:.82;margin-top:8px;line-height:1.35}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div><b>Sky Jump</b> <span style="opacity:.75;font-size:12px;">(tap trái/phải để điều hướng)</span></div>
+      <a class="btn" href="../../index.html#tab=game">← Back</a>
+    </div>
+
+    <div class="card">
+      <canvas id="c" width="360" height="520"></canvas>
+      <div class="row">
+        <button class="pill" id="leftBtn">LEFT</button>
+        <button class="pill" id="rightBtn">RIGHT</button>
+        <button class="pill" id="restartBtn">RESTART</button>
+      </div>
+      <div class="hint">
+        Fixes: camera mượt hơn, collision “đạp platform” chuẩn (dựa vào crossing), không giật/bug rơi.<br>
+        Điều khiển: tap/click nửa trái-phải canvas, hoặc ← →, hoặc nút.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.requestAnimationFrame = window.requestAnimationFrame ||
+      window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame ||
+      function(cb){ return setTimeout(function(){ cb(Date.now()); }, 1000/60); };
+
+    (function(){
+      var c = document.getElementById('c');
+      var ctx = c.getContext('2d');
+      var W = c.width, H = c.height;
+
+      function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+      function rand(a,b){ return a + Math.random()*(b-a); }
+
+      var best = 0;
+      try{ best = parseInt(localStorage.getItem('sj_best')||'0',10)||0; }catch(e){}
+
+      // World coordinates: y increases downward (like canvas).
+      // cameraY = world y at top of screen.
+      var cameraY = 0;
+
+      var player = {
+        x: W/2,
+        y: 360,   // world y
+        r: 12,
+        vx: 0,
+        vy: -300  // px/s
+      };
+
+      var gravity = 1200;    // px/s^2
+      var jumpV = -720;      // px/s
+      var accel = 1250;      // px/s^2
+      var damp = 0.88;
+
+      var dir = 0; // -1,0,1
+
+      var platforms = [];
+      var nextPlatY = 450; // will go upward (smaller y)
+      var score = 0;
+      var running = true;
+
+      function spawnPlatform(atY){
+        var w = rand(68, 120);
+        var x = rand(10, W - 10 - w);
+        platforms.push({x:x, y:atY, w:w, h:10});
+      }
+
+      function reset(){
+        platforms = [];
+        cameraY = 0;
+        score = 0;
+        running = true;
+
+        player.x = W/2;
+        player.y = 360;
+        player.vx = 0;
+        player.vy = -330;
+
+        // seed platforms from bottom to top
+        nextPlatY = 460;
+        for(var i=0;i<14;i++){
+          spawnPlatform(nextPlatY);
+          nextPlatY -= rand(55, 85); // go up (smaller y)
+        }
+      }
+
+      function gameOver(){
+        running = false;
+        if(score > best){
+          best = score;
+          try{ localStorage.setItem('sj_best', String(best)); }catch(e){}
+        }
+      }
+
+      function update(dt){
+        if(!running) return;
+
+        // controls
+        player.vx += dir * accel * dt;
+        player.vx *= damp;
+        player.x += player.vx * dt;
+
+        // wrap x
+        if(player.x < -player.r) player.x = W + player.r;
+        if(player.x > W + player.r) player.x = -player.r;
+
+        // physics
+        var prevY = player.y;
+        var prevBottom = prevY + player.r;
+
+        player.vy += gravity * dt;
+        player.y += player.vy * dt;
+
+        var bottom = player.y + player.r;
+
+        // collision with platforms only when falling
+        if(player.vy > 0){
+          for(var i=0;i<platforms.length;i++){
+            var p = platforms[i];
+            var top = p.y;
+            var withinX = (player.x > p.x - player.r) && (player.x < p.x + p.w + player.r);
+
+            // crossing platform top line
+            if(withinX && prevBottom <= top && bottom >= top && (player.y - player.r) < top + p.h){
+              player.y = top - player.r;
+              player.vy = jumpV;
+              // score based on highest camera (moving up => cameraY decreases)
+              break;
+            }
+          }
+        }
+
+        // camera follow: keep player around 40% from top
+        var screenY = player.y - cameraY;
+        var targetCam = cameraY;
+        var desired = H * 0.42;
+
+        if(screenY < desired){
+          targetCam = player.y - desired;
+        }
+        // smooth
+        cameraY += (targetCam - cameraY) * 0.14;
+
+        // generate more platforms above (smaller y)
+        while(nextPlatY > cameraY - 260){
+          spawnPlatform(nextPlatY);
+          nextPlatY -= rand(55, 90);
+        }
+
+        // cleanup below
+        var keep = [];
+        for(var j=0;j<platforms.length;j++){
+          if(platforms[j].y < cameraY + H + 140) keep.push(platforms[j]);
+        }
+        platforms = keep;
+
+        // score = max height climbed => -minCameraY
+        score = Math.max(score, Math.floor((-cameraY) / 10));
+
+        // game over if player fell below bottom
+        if(player.y - cameraY > H + 90){
+          gameOver();
+        }
+      }
+
+      function draw(){
+        ctx.clearRect(0,0,W,H);
+
+        // bg
+        ctx.fillStyle = '#0f1115';
+        ctx.fillRect(0,0,W,H);
+
+        // stars
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        for(var i=0;i<22;i++){
+          var sx = (i*41 + (-cameraY*0.25)) % W;
+          var sy = (i*67 + (-cameraY*0.18)) % H;
+          ctx.fillRect(sx, sy, 2, 2);
+        }
+
+        // platforms
+        for(var i=0;i<platforms.length;i++){
+          var p = platforms[i];
+          var y = p.y - cameraY;
+          if(y < -20 || y > H+20) continue;
+          ctx.fillStyle = '#2dd4ff';
+          ctx.fillRect(p.x, y, p.w, p.h);
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          ctx.fillRect(p.x, y+p.h, p.w, 2);
+        }
+
+        // player
+        var py = player.y - cameraY;
+        ctx.beginPath();
+        ctx.fillStyle = '#f97316';
+        ctx.arc(player.x, py, player.r, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = '#0b0f12';
+        ctx.fillRect(player.x+2, py-4, 4, 4);
+
+        // UI
+        ctx.fillStyle = '#e5e7eb';
+        ctx.font = 'bold 16px Segoe UI, Arial';
+        ctx.fillText('Score: ' + score, 12, 24);
+        ctx.font = '12px Segoe UI, Arial';
+        ctx.fillText('Best: ' + best, 12, 42);
+
+        if(!running){
+          ctx.fillStyle = 'rgba(0,0,0,0.45)';
+          ctx.fillRect(0,0,W,H);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 22px Segoe UI, Arial';
+          ctx.fillText('GAME OVER', 110, 250);
+          ctx.font = '13px Segoe UI, Arial';
+          ctx.fillText('Tap để chơi lại', 128, 280);
+        }
+      }
+
+      var lastTs = Date.now();
+      function loop(){
+        var now = Date.now();
+        var dt = (now - lastTs) / 1000;
+        lastTs = now;
+        dt = clamp(dt, 0, 0.033);
+
+        update(dt);
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      // Controls
+      function setDir(d){ dir = d; }
+      function prevent(e){ if(e && e.preventDefault) e.preventDefault(); return false; }
+
+      document.getElementById('leftBtn').onmousedown = function(){ setDir(-1); };
+      document.getElementById('rightBtn').onmousedown = function(){ setDir(1); };
+      document.getElementById('leftBtn').onmouseup = function(){ setDir(0); };
+      document.getElementById('rightBtn').onmouseup = function(){ setDir(0); };
+      document.getElementById('leftBtn').ontouchstart = function(e){ prevent(e); setDir(-1); };
+      document.getElementById('rightBtn').ontouchstart = function(e){ prevent(e); setDir(1); };
+      document.getElementById('leftBtn').ontouchend = function(e){ prevent(e); setDir(0); };
+      document.getElementById('rightBtn').ontouchend = function(e){ prevent(e); setDir(0); };
+
+      c.addEventListener('click', function(e){
+        if(!running){ reset(); return; }
+        var rect = c.getBoundingClientRect();
+        var x = (e.clientX - rect.left) * (W / rect.width);
+        dir = (x < W/2) ? -1 : 1;
+        setTimeout(function(){ dir = 0; }, 140);
+      });
+
+      c.addEventListener('touchstart', function(e){
+        if(!running){ reset(); return; }
+        prevent(e);
+        var t = e.touches && e.touches[0];
+        if(!t) return;
+        var rect = c.getBoundingClientRect();
+        var x = (t.clientX - rect.left) * (W / rect.width);
+        dir = (x < W/2) ? -1 : 1;
+        setTimeout(function(){ dir = 0; }, 140);
+      }, {passive:false});
+
+      document.addEventListener('keydown', function(e){
+        e = e || window.event;
+        var code = e.keyCode || 0;
+        if(code===37) dir = -1;
+        if(code===39) dir = 1;
+      });
+      document.addEventListener('keyup', function(e){
+        e = e || window.event;
+        var code = e.keyCode || 0;
+        if(code===37 || code===39) dir = 0;
+      });
+
+      document.getElementById('restartBtn').onclick = reset;
+
+      reset();
+      loop();
+    })();
+  </script>
+</body>
+</html>
