@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <!-- WP8/IE Mobile friendly -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="msapplication-tap-highlight" content="no" />
+  <title>Lumia Hub</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="app" id="app">
+    <!-- Header -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="title">Lumia Hub</div>
+        <div class="subtitle">Game • Music • Story</div>
+      </div>
+
+      <div class="actions">
+        <button class="icon-btn" id="toggleTheme" type="button" title="Dark mode" aria-label="Toggle dark mode">
+          <span class="icon">☾</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Search -->
+    <section class="searchbar">
+      <span class="search-icon">🔎</span>
+      <input id="searchInput" type="search" placeholder="Tìm kiếm (vd: piano, zombie, cổ tích...)"
+             autocomplete="off" />
+      <button class="pill-btn" id="clearSearch" type="button">X</button>
+    </section>
+
+    <!-- Tabs -->
+    <nav class="tabs" role="tablist" aria-label="Categories">
+      <button class="tab active" data-tab="game" role="tab" aria-selected="true">Game</button>
+      <button class="tab" data-tab="music" role="tab" aria-selected="false">Music</button>
+      <button class="tab" data-tab="story" role="tab" aria-selected="false">Story</button>
+
+      <div class="tabs-spacer"></div>
+
+      <button class="pill-btn" id="toggleView" type="button" title="Chuyển Card/List">
+        <span id="viewLabel">Card</span>
+      </button>
+    </nav>
+
+    <!-- Content -->
+    <main class="content">
+      <div class="hint" id="resultHint">Gõ để tìm kiếm trong tab hiện tại.</div>
+
+      <section class="grid view-card" id="itemsRoot" aria-live="polite">
+        <!-- JS renders items here -->
+      </section>
+
+      <div class="empty" id="emptyState" style="display:none;">
+        <div class="empty-title">Không có kết quả</div>
+        <div class="empty-sub">Thử từ khóa khác nhé.</div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="foot-left">WP8 style • No libs</div>
+      <div class="foot-right" id="statusText">Game • 0 kết quả</div>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
