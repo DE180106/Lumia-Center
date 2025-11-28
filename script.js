@@ -1,506 +1,915 @@
-/* ===== Lumia Hub + Story Reader (WP8 friendly) ===== */
-(function () {
-  // ---------- storage helpers ----------
-  function safeGet(key, fallback) {
-    try { var v = localStorage.getItem(key); return v === null ? fallback : v; }
-    catch (e) { return fallback; }
+/* Lumia Hub - WP8-ish (no libs)
+   - Tabs + Search + Card/List + Dark mode
+   - Story reader + AI story (Gemini) + AI TTS (Gemini)
+*/
+
+/* =========================
+   IMPORTANT (API KEY)
+   =========================
+   Nếu bạn dán key vào đây và deploy GitHub Pages => key sẽ lộ.
+*/
+var GEMINI_API_KEY = "AIzaSyAefx6asVgNSEBN2YK06ZqbKoiJuEfWitw"; // <<< DÁN KEY Ở ĐÂY (nếu muốn)
+
+/* Models (REST) */
+var MODEL_TEXT = "gemini-2.5-flash";
+var MODEL_TTS  = "gemini-2.5-flash-preview-tts";
+
+/* DOM */
+var body = document.body;
+
+var toggleThemeBtn = document.getElementById("toggleTheme");
+var openSettingsBtn = document.getElementById("openSettings");
+
+var searchInput = document.getElementById("searchInput");
+var clearSearchBtn = document.getElementById("clearSearch_toggle") || document.getElementById("clearSearch");
+
+var tabs = document.querySelectorAll(".tab");
+var toggleViewBtn = document.getElementById("toggleView");
+var viewLabel = document.getElementById("viewLabel");
+
+var itemsRoot = document.getElementById("itemsRoot");
+var emptyState = document.getElementById("emptyState");
+var resultHint = document.getElementById("resultHint");
+var statusText = document.getElementById("statusText");
+
+/* Story Overlay */
+var storyOverlay = document.getElementById("storyOverlay");
+var storyClose = document.getElementById("storyClose");
+var storySave = document.getElementById("storySave");
+
+var storyTile = document.getElementById("storyTile");
+var storyTitleEl = document.getElementById("storyTitle");
+var storyMetaEl = document.getElementById("storyMeta");
+var storyBadgesEl = document.getElementById("storyBadges");
+var storyTextEl = document.getElementById("storyText");
+
+var modeReadBtn = document.getElementById("modeRead");
+var modeAIBtn = document.getElementById("modeAI");
+var modeVoiceBtn = document.getElementById("modeVoice");
+
+var panelRead = document.getElementById("panelRead");
+var panelAI = document.getElementById("panelAI");
+var panelVoice = document.getElementById("panelVoice");
+
+var fontSizeSel = document.getElementById("fontSize");
+var lineHeightSel = document.getElementById("lineHeight");
+
+/* AI Story */
+var aiTopic = document.getElementById("aiTopic");
+var aiGenre = document.getElementById("aiGenre");
+var aiLenPreset = document.getElementById("aiLenPreset");
+var aiLenCustomWrap = document.getElementById("aiLenCustomWrap");
+var aiLenWords = document.getElementById("aiLenWords");
+var aiStyle = document.getElementById("aiStyle");
+var aiGenerate = document.getElementById("aiGenerate");
+var aiUseToRead = document.getElementById("aiUseToRead");
+var aiStatus = document.getElementById("aiStatus");
+
+/* TTS */
+var ttsVoice = document.getElementById("ttsVoice");
+var ttsLimit = document.getElementById("ttsLimit");
+var ttsSpeak = document.getElementById("ttsSpeak");
+var ttsStop = document.getElementById("ttsStop");
+var ttsPlayer = document.getElementById("ttsPlayer");
+var ttsStatus = document.getElementById("ttsStatus");
+
+/* Settings Overlay */
+var settingsOverlay = document.getElementById("settingsOverlay");
+var settingsClose = document.getElementById("settingsClose");
+var apiKeyInput = document.getElementById("apiKeyInput");
+var saveApiKey = document.getElementById("saveApiKey");
+var clearApiKey = document.getElementById("clearApiKey");
+var settingsStatus = document.getElementById("settingsStatus");
+
+var LS = {
+  theme: "lumia_theme",
+  view: "lumia_view",
+  tab: "lumia_tab",
+  stories: "lumia_stories",
+  apiKey: "lumia_gemini_api_key"
+};
+
+var state = {
+  tab: "game",
+  view: "card",
+  query: "",
+  storyOpen: null,   // current story item
+  storyIsGenerated: false
+};
+
+/* =========================
+   DATA
+   ========================= */
+var GAMES = [
+  {
+    id: "mini-chess",
+    title: "Mini Chess",
+    sub: "Cờ vua mini • offline",
+    tags: ["board", "logic"],
+    tile: "♟",
+    url: "games/mini-chess/index.html"
+  },
+  {
+    id: "sky-jump",
+    title: "Sky Jump",
+    sub: "Nhảy là né • arcade",
+    tags: ["jump", "arcade"],
+    tile: "☁",
+    url: "games/sky-jump/index.html"
+  },
+  {
+    id: "zombie-rush",
+    title: "Zombie Rush",
+    sub: "Chạy và bắn • action",
+    tags: ["zombie", "rush"],
+    tile: "Z",
+    url: "games/zombie-rush/index.html"
   }
-  function safeSet(key, value) {
-    try { localStorage.setItem(key, value); } catch (e) {}
+];
+
+var MUSIC = [
+  {
+    id: "music-1",
+    title: "Lumia Playlist",
+    sub: "Danh sách nhạc demo (placeholder)",
+    tags: ["music"],
+    tile: "♪",
+    url: "#"
+  },
+  {
+    id: "music-2",
+    title: "Chill Mix",
+    sub: "Lo-fi • study",
+    tags: ["chill", "lofi"],
+    tile: "♫",
+    url: "#"
   }
+];
 
-  // ---------- util ----------
-  function escapeHtml(text) {
-    return String(text)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+var BUILTIN_STORIES = [
+  {
+    id: "s1",
+    title: "Cậu bé và chiếc đèn pin",
+    sub: "Truyện ngắn • 3 phút",
+    tags: ["cổ tích", "bài học"],
+    tile: "S",
+    kind: "story",
+    content:
+      "Cậu bé Nam có một chiếc đèn pin cũ.\n\n" +
+      "Một tối mất điện, Nam soi đèn giúp bà tìm thuốc, giúp em làm bài, rồi chạy ra cổng soi đường cho chú shipper.\n\n" +
+      "Đèn pin yếu dần, nhưng ai cũng cười. Nam hiểu: ánh sáng quý nhất là ánh sáng mình đem tới cho người khác.\n\n" +
+      "Từ hôm đó, Nam luôn mang theo chiếc đèn pin—và một trái tim ấm."
+  },
+  {
+    id: "s2",
+    title: "Mèo con đi lạc",
+    sub: "Truyện ngắn • 4 phút",
+    tags: ["phiêu lưu", "ấm áp"],
+    tile: "🐾",
+    kind: "story",
+    content:
+      "Mèo con Mít lạc khỏi nhà giữa phố đông.\n\n" +
+      "Mít hỏi chim sẻ, hỏi chú chó canh cửa, rồi theo mùi bánh mì nóng dẫn tới một cô bán hàng.\n\n" +
+      "Cô đưa Mít lên vai, đi quanh khu phố, hỏi từng nhà.\n\n" +
+      "Cuối cùng, Mít thấy chiếc khăn đỏ của bé chủ. Mít kêu “meo!” thật to. Ai cũng thở phào.\n\n" +
+      "Đi lạc đôi khi đáng sợ, nhưng lòng tốt thì luôn tìm thấy đường."
   }
-  function normalize(s) {
-    return (s || "")
-      .toLowerCase()
-      .replace(/á|à|ả|ã|ạ|ă|ắ|ằ|ẳ|ẵ|ặ|â|ấ|ầ|ẩ|ẫ|ậ/g, "a")
-      .replace(/é|è|ẻ|ẽ|ẹ|ê|ế|ề|ể|ễ|ệ/g, "e")
-      .replace(/í|ì|ỉ|ĩ|ị/g, "i")
-      .replace(/ó|ò|ỏ|õ|ọ|ô|ố|ồ|ổ|ỗ|ộ|ơ|ớ|ờ|ở|ỡ|ợ/g, "o")
-      .replace(/ú|ù|ủ|ũ|ụ|ư|ứ|ừ|ử|ữ|ự/g, "u")
-      .replace(/ý|ỳ|ỷ|ỹ|ỵ/g, "y")
-      .replace(/đ/g, "d");
+];
+
+/* =========================
+   UTIL
+   ========================= */
+function $(id){ return document.getElementById(id); }
+
+function safeText(s){
+  return (s == null) ? "" : String(s);
+}
+
+function normalize(s){
+  s = safeText(s).toLowerCase();
+  // remove Vietnamese accents basic
+  s = s.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
+  s = s.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g, "e");
+  s = s.replace(/ì|í|ị|ỉ|ĩ/g, "i");
+  s = s.replace(/ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ/g, "o");
+  s = s.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g, "u");
+  s = s.replace(/ỳ|ý|ỵ|ỷ|ỹ/g, "y");
+  s = s.replace(/đ/g, "d");
+  return s;
+}
+
+function lsGet(key, fallback){
+  try{
+    var v = localStorage.getItem(key);
+    if(v == null) return fallback;
+    return v;
+  }catch(e){
+    return fallback;
   }
-  function tabLabel(tab) { return tab.charAt(0).toUpperCase() + tab.slice(1); }
-  function tileLetter(title) { var t = (title || "").trim(); return t ? t.charAt(0).toUpperCase() : "?"; }
-  function renderTile(tab, title) {
-    return '<div class="tile ' + tab + '">' + escapeHtml(tileLetter(title)) + "</div>";
+}
+
+function lsSet(key, value){
+  try{ localStorage.setItem(key, value); }catch(e){}
+}
+
+function lsJsonGet(key, fallback){
+  try{
+    var v = localStorage.getItem(key);
+    if(!v) return fallback;
+    return JSON.parse(v);
+  }catch(e){
+    return fallback;
   }
+}
 
-  function filterItems(items, query, tab) {
-    if (!query) return items;
-    var q = normalize(query);
-    var out = [];
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      var hay = it.title + " " + (it.badge || "") + " " + (it.meta || "") + " " + (it.desc || "");
-      // search inside story content too
-      if (tab === "story" && it.content) hay += " " + it.content;
-      if (normalize(hay).indexOf(q) !== -1) out.push(it);
-    }
-    return out;
+function lsJsonSet(key, obj){
+  try{ localStorage.setItem(key, JSON.stringify(obj)); }catch(e){}
+}
+
+function getApiKey(){
+  if(GEMINI_API_KEY && GEMINI_API_KEY.length > 10) return GEMINI_API_KEY;
+  var k = lsGet(LS.apiKey, "");
+  return k || "";
+}
+
+function setStatus(el, msg){
+  if(!el) return;
+  el.innerHTML = safeText(msg);
+}
+
+function show(el){ if(el) el.style.display = ""; }
+function hide(el){ if(el) el.style.display = "none"; }
+
+function setOverlayVisible(overlayEl, visible){
+  if(!overlayEl) return;
+  if(visible){
+    overlayEl.className = overlayEl.className.indexOf("show") >= 0 ? overlayEl.className : (overlayEl.className + " show");
+    overlayEl.setAttribute("aria-hidden","false");
+  }else{
+    overlayEl.className = overlayEl.className.replace(/\bshow\b/g, "").replace(/\s{2,}/g," ").replace(/^\s+|\s+$/g,"");
+    overlayEl.setAttribute("aria-hidden","true");
   }
+}
 
-  function readTabFromHash() {
-    var h = (location.hash || "");
-    if (h.indexOf("#tab=") === 0) return h.substring("#tab=".length);
-    return null;
-  }
-  function setHashTab(tab) { location.hash = "#tab=" + encodeURIComponent(tab); }
-
-  // ===================== DATA =====================
-  var DATA = {
-    game: [
-      { id: "game-1", title: "Zombie Rush", badge: "Offline", meta: "Arcade • nhẹ", desc: "Chạy vô tận, nhảy né chướng ngại.", url: "games/zombie-rush/index.html" },
-      { id: "game-2", title: "Mini Chess (Knight Jump)", badge: "Puzzle", meta: "Board • nhẹ", desc: "Nhảy theo luật Knight (2+1).", url: "games/mini-chess/index.html" },
-      { id: "game-3", title: "Sky Jump", badge: "Casual", meta: "Platform • nhẹ", desc: "Nhảy platform, đừng rơi xuống.", url: "games/sky-jump/index.html" },
-      { id: "game-4", title: "Gold Run", badge: "Endless", meta: "3 lanes • coins", desc: "Đổi lane, nhảy, trượt, ăn coin.", url: "games/gold-run/index.html" },
-      { id: "game-5", title: "Orbit Switch", badge: "Arcade", meta: "2 orbits • tap switch", desc: "Đổi inner/outer để né gate và ăn coin.", url: "games/orbit-switch/index.html" }
-    ],
-    music: [
-      { id: "music-1", title: "Lo-fi Chill", badge: "Playlist", meta: "2h 15m", desc: "Lo-fi nhẹ cho học bài / ngủ." },
-      { id: "music-2", title: "Piano Focus", badge: "Instrument", meta: "1h 05m", desc: "Piano tối giản, hợp tập trung." },
-      { id: "music-3", title: "EDM Quick", badge: "Energy", meta: "45m", desc: "Nhạc nhanh, gọn." }
-    ],
-    story: [
-      {
-        id: "story-1",
-        title: "Fox & Moon",
-        badge: "Kids",
-        meta: "6–8 phút",
-        desc: "Cáo con và mặt trăng học cách biết ơn.",
-        content:
-          "Cáo con sống ở rìa rừng, nơi mỗi tối đều nhìn thấy mặt trăng treo lơ lửng như một chiếc đèn.\n\n" +
-          "Một đêm, trời lạnh tới mức lá cây cũng co lại, cáo con ôm bụng kêu ục ục. Nó nhìn lên và than: “Trăng ơi, sao lúc nào cũng sáng vậy? Cậu không thấy lạnh à?”\n\n" +
-          "Mặt trăng không trả lời, chỉ sáng thêm một chút. Cáo con bực mình, đá hòn đá kecil lăn lóc. Nhưng nó vẫn… cứ nhìn.\n\n" +
-          "Rồi nó phát hiện điều lạ: con đường về nhà bỗng rõ ràng hơn, những bụi gai cũng hiện ra để nó tránh. Nó đi thẳng một mạch, không vấp nữa.\n\n" +
-          "Tối hôm sau, cáo con mang theo một chiếc lá to, tự chế thành “mũ trăng”. Nó đội lên đầu, chạy khắp nơi khoe: “Tớ cũng có trăng của riêng mình!”\n\n" +
-          "Nhưng chiếc lá che mắt nó. Nó suýt rơi xuống mương, suýt đâm vào cây. Nó kéo mũ xuống, thở hổn hển, rồi ngẩng lên nhìn trăng thật.\n\n" +
-          "Đêm đó, nó không than nữa. Nó chỉ nói rất nhỏ: “Cảm ơn nhé.”\n\n" +
-          "Gió thổi qua, lá cây xào xạc. Mặt trăng vẫn không nói, nhưng ánh sáng như mềm hơn. Và cáo con, lần đầu tiên, về nhà bằng một con đường đầy bình yên."
-      },
-      {
-        id: "story-2",
-        title: "The Last Tram",
-        badge: "Chill",
-        meta: "7–10 phút",
-        desc: "Chuyến tàu muộn và một lời hứa nhỏ.",
-        content:
-          "Thành phố về đêm giống như một màn hình khóa: sáng vừa đủ để biết mình đang ở đâu, nhưng tối đủ để mọi thứ trở nên nhẹ.\n\n" +
-          "Tôi đứng ở trạm chờ chuyến tàu điện cuối. Người ta hay nói: “Chuyến cuối là của những người chưa kịp.” Tôi cười thầm vì đúng thật.\n\n" +
-          "Tàu tới, cửa mở ra như một cái thở dài. Trong toa chỉ có vài người: một cô bé ôm balo, một chú bảo vệ mệt mỏi, và một bà cụ cầm túi vải.\n\n" +
-          "Bà cụ nhìn tôi, hỏi: “Cháu về đâu?”\n\n" +
-          "Tôi đáp: “Cháu… về nhà ạ. Nhưng giờ nhà không còn giống nhà lắm.”\n\n" +
-          "Bà cụ gật gù như thể đã nghe câu đó nhiều lần. Rồi bà đưa tôi một viên kẹo bạc hà. “Thử xem. Đêm sẽ bớt dài.”\n\n" +
-          "Viên kẹo lạnh nơi đầu lưỡi. Tôi bỗng nhớ những thứ mình bỏ quên: bữa cơm hứa sẽ về đúng giờ, tin nhắn chưa trả lời, cuộc gọi bị bấm tắt.\n\n" +
-          "Tàu đi qua những ô cửa sổ phản chiếu đèn đường. Mỗi ánh đèn như một câu hỏi: ‘Mình có thể làm lại không?’\n\n" +
-          "Khi tàu dừng, bà cụ đứng lên. Trước khi xuống, bà quay lại: “Cháu về nhà không giống nhà, thì thử làm một việc nhỏ cho nó giống lại.”\n\n" +
-          "Tôi cầm viên kẹo, rồi cầm điện thoại. Tôi nhắn: “Con về muộn. Nhưng con về.”\n\n" +
-          "Ngoài kia, thành phố vẫn tối. Nhưng toa tàu bỗng ấm hơn một chút."
-      },
-      {
-        id: "story-3",
-        title: "Cà phê & Mưa",
-        badge: "VN",
-        meta: "5–7 phút",
-        desc: "Một buổi tối mưa và ly cà phê nguội dần.",
-        content:
-          "Mưa đến như một bản nhạc nền quen thuộc của tháng mười. Quán cà phê bật đèn vàng. Tôi ngồi ở góc, nhìn những giọt nước chạy đua trên kính.\n\n" +
-          "Ly cà phê đặt trước mặt. Anh bảo: “Người ta hay nói, cà phê nguội là vì mình mãi nghĩ chuyện xa.”\n\n" +
-          "Tôi hỏi: “Thế còn chuyện gần?”\n\n" +
-          "Anh cười: “Chuyện gần thì… mình hay quên mất.”\n\n" +
-          "Chúng tôi im lặng. Im lặng không phải vì hết chuyện, mà vì có quá nhiều chuyện không biết bắt đầu từ đâu.\n\n" +
-          "Mưa đập lên mái hiên. Tôi chợt nhớ những lời hứa: sẽ gọi, sẽ ghé, sẽ ‘khi nào rảnh’. Những lời hứa như ô dù ai đó bỏ quên.\n\n" +
-          "Anh đẩy ly cà phê về phía tôi: “Uống đi. Nguội rồi thì thêm đường.”\n\n" +
-          "Tôi khuấy nhẹ. Đường tan, mưa vẫn rơi, nhưng lòng bỗng đỡ nặng.\n\n" +
-          "Tôi nói: “Mai mình… làm chuyện gần trước nhé.”\n\n" +
-          "Anh gật: “Ừ. Mai.”\n\n" +
-          "Ngoài cửa kính, một chiếc xe đi qua, để lại vệt nước dài. Tôi nhận ra: đôi khi, bắt đầu lại chỉ cần một câu ‘mai mình làm’ — và lần này, mình thật sự làm."
-      }
-    ]
-  };
-
-  // ===================== THEME =====================
-  function applyTheme(isDark) { document.body.className = isDark ? "dark" : ""; }
-  function initThemeToggle() {
-    var savedDark = safeGet("lh_dark", "0");
-    var dark = (savedDark === "1");
-    applyTheme(dark);
-
-    var btn = document.getElementById("toggleTheme");
-    if (btn) {
-      btn.onclick = function () {
-        dark = !dark;
-        safeSet("lh_dark", dark ? "1" : "0");
-        applyTheme(dark);
-      };
-    }
-  }
-  initThemeToggle();
-
-  // ===================== HUB =====================
-  var itemsRoot = document.getElementById("itemsRoot");
-  if (!itemsRoot) return;
-
-  var tabs = document.querySelectorAll(".tab");
-  var searchInput = document.getElementById("searchInput");
-  var clearBtn = document.getElementById("clearSearch");
-  var toggleViewBtn = document.getElementById("toggleView");
-  var viewLabel = document.getElementById("viewLabel");
-  var emptyState = document.getElementById("emptyState");
-  var statusText = document.getElementById("statusText");
-  var hint = document.getElementById("resultHint");
-
-  var state = {
-    tab: "game",
-    query: "",
-    view: "card"
-  };
-
-  // ---- Story Reader elements ----
-  var readerOverlay = document.getElementById("readerOverlay");
-  var readerClose = document.getElementById("readerClose");
-  var readerTitle = document.getElementById("readerTitle");
-  var readerMeta = document.getElementById("readerMeta");
-  var readerTile = document.getElementById("readerTile");
-  var readerBody = document.getElementById("readerBody");
-  var readerContent = document.getElementById("readerContent");
-  var readerProgress = document.getElementById("readerProgress");
-  var prevStoryBtn = document.getElementById("prevStory");
-  var nextStoryBtn = document.getElementById("nextStory");
-  var fontMinus = document.getElementById("fontMinus");
-  var fontPlus = document.getElementById("fontPlus");
-  var autoScrollBtn = document.getElementById("autoScrollBtn");
-
-  var reader = {
-    open: false,
-    storyId: null,
-    storyIndex: 0,
-    fontSize: parseInt(safeGet("lh_story_font", "16"), 10) || 16,
-    auto: false,
-    autoTimer: null
-  };
-
-  function applyView() {
-    if (state.view === "list") {
-      itemsRoot.className = "grid view-list";
-      if (viewLabel) viewLabel.innerHTML = "List";
-    } else {
-      itemsRoot.className = "grid view-card";
-      if (viewLabel) viewLabel.innerHTML = "Card";
-    }
-    safeSet("lh_view", state.view);
-  }
-
-  function setActiveTab(name) {
-    state.tab = name;
-    safeSet("lh_tab", name);
-
-    for (var i = 0; i < tabs.length; i++) {
-      var t = tabs[i];
-      var active = (t.getAttribute("data-tab") === name);
-      t.className = active ? "tab active" : "tab";
-      t.setAttribute("aria-selected", active ? "true" : "false");
-    }
-  }
-
-  // init
-  (function init() {
-    var savedView = safeGet("lh_view", "card");
-    var savedTab = safeGet("lh_tab", "game");
-
-    state.view = (savedView === "list" ? "list" : "card");
-    state.tab = (savedTab === "music" || savedTab === "story" || savedTab === "game") ? savedTab : "game";
-
-    var tabHash = readTabFromHash();
-    if (tabHash) {
-      try { tabHash = decodeURIComponent(tabHash); } catch (e) {}
-      if (tabHash === "game" || tabHash === "music" || tabHash === "story") state.tab = tabHash;
-    }
-
-    applyView();
-    setActiveTab(state.tab);
-    render();
-  })();
-
-  for (var i = 0; i < tabs.length; i++) {
-    tabs[i].onclick = function () {
-      var name = this.getAttribute("data-tab");
-      setActiveTab(name);
-      setHashTab(name);
-      render();
-    };
-  }
-
-  if (toggleViewBtn) {
-    toggleViewBtn.onclick = function () {
-      state.view = (state.view === "card") ? "list" : "card";
-      applyView();
-    };
-  }
-
-  function onSearchChange() {
-    state.query = (searchInput && searchInput.value) ? searchInput.value : "";
-    render();
-  }
-
-  if (searchInput) {
-    searchInput.oninput = onSearchChange;
-    searchInput.onkeyup = onSearchChange;
-  }
-
-  if (clearBtn) {
-    clearBtn.onclick = function () {
-      if (searchInput) searchInput.value = "";
-      state.query = "";
-      render();
-      try { searchInput.focus(); } catch (e) {}
-    };
-  }
-
-  // ===================== STORY READER =====================
-  function setReaderFont() {
-    reader.fontSize = Math.max(14, Math.min(22, reader.fontSize));
-    safeSet("lh_story_font", String(reader.fontSize));
-    if (readerContent) {
-      readerContent.style.fontSize = reader.fontSize + "px";
+/* =========================
+   STORY STORAGE
+   ========================= */
+function loadSavedStories(){
+  var arr = lsJsonGet(LS.stories, []);
+  if(!arr || !arr.length) return [];
+  // Normalize
+  var out = [];
+  for(var i=0;i<arr.length;i++){
+    var it = arr[i];
+    if(it && it.id && it.title && it.content){
+      out.push(it);
     }
   }
+  return out;
+}
 
-  function storyById(id) {
-    var arr = DATA.story;
-    for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return { item: arr[i], index: i };
-    return null;
+function saveStoryItem(item){
+  var arr = loadSavedStories();
+  // upsert by id
+  var found = false;
+  for(var i=0;i<arr.length;i++){
+    if(arr[i].id === item.id){ arr[i] = item; found = true; break; }
   }
+  if(!found) arr.unshift(item);
+  // cap
+  if(arr.length > 20) arr.length = 20;
+  lsJsonSet(LS.stories, arr);
+}
 
-  function renderStoryContent(text) {
-    // split by blank lines -> paragraphs
-    var parts = String(text || "").split(/\n\s*\n/g);
-    var html = "";
-    for (var i = 0; i < parts.length; i++) {
-      var p = parts[i].trim();
-      if (!p) continue;
-      html += "<p>" + escapeHtml(p) + "</p>";
-    }
-    return html || "<p>(Truyện trống)</p>";
-  }
+function makeStoryList(){
+  var saved = loadSavedStories();
 
-  function openReader(storyId) {
-    var found = storyById(storyId);
-    if (!found) return;
-
-    reader.open = true;
-    reader.storyId = storyId;
-    reader.storyIndex = found.index;
-
-    if (readerTitle) readerTitle.textContent = found.item.title;
-    if (readerMeta) readerMeta.textContent = (found.item.badge || "") + " • " + (found.item.meta || "");
-    if (readerTile) readerTile.textContent = tileLetter(found.item.title);
-    if (readerContent) readerContent.innerHTML = renderStoryContent(found.item.content);
-
-    setReaderFont();
-
-    // show overlay
-    if (readerOverlay) {
-      readerOverlay.className = "overlay open";
-      readerOverlay.setAttribute("aria-hidden", "false");
-    }
-
-    // restore scroll position
-    var posKey = "lh_story_pos_" + storyId;
-    var savedPos = parseInt(safeGet(posKey, "0"), 10) || 0;
-    if (readerBody) {
-      readerBody.scrollTop = 0;
-      // small delay for layout (WP8 safe)
-      setTimeout(function () {
-        readerBody.scrollTop = savedPos;
-        updateReaderProgress();
-      }, 10);
-    }
-
-    // remember last story
-    safeSet("lh_story_last", storyId);
-
-    // stop auto on open (fresh)
-    setAutoScroll(false);
-  }
-
-  function closeReader() {
-    if (!reader.open) return;
-
-    // save position
-    if (readerBody && reader.storyId) {
-      safeSet("lh_story_pos_" + reader.storyId, String(readerBody.scrollTop || 0));
-    }
-
-    setAutoScroll(false);
-    reader.open = false;
-
-    if (readerOverlay) {
-      readerOverlay.className = "overlay";
-      readerOverlay.setAttribute("aria-hidden", "true");
-    }
-  }
-
-  function updateReaderProgress() {
-    if (!readerBody || !readerProgress) return;
-    var max = (readerBody.scrollHeight - readerBody.clientHeight);
-    var pct = (max <= 0) ? 100 : Math.round((readerBody.scrollTop / max) * 100);
-    pct = Math.max(0, Math.min(100, pct));
-    readerProgress.textContent = pct + "%";
-  }
-
-  function openPrevNext(dir) {
-    var list = DATA.story;
-    if (!list.length) return;
-    var idx = reader.storyIndex + dir;
-    if (idx < 0) idx = 0;
-    if (idx >= list.length) idx = list.length - 1;
-    openReader(list[idx].id);
-  }
-
-  function setAutoScroll(on) {
-    reader.auto = !!on;
-    if (autoScrollBtn) autoScrollBtn.textContent = reader.auto ? "Auto ✓" : "Auto";
-
-    if (reader.autoTimer) {
-      clearInterval(reader.autoTimer);
-      reader.autoTimer = null;
-    }
-
-    if (reader.auto && readerBody) {
-      reader.autoTimer = setInterval(function () {
-        if (!reader.open || !readerBody) return;
-        // speed: ~18px/s (nhẹ cho WP8)
-        readerBody.scrollTop += 1;
-        updateReaderProgress();
-
-        // stop when end reached
-        var max = (readerBody.scrollHeight - readerBody.clientHeight);
-        if (max > 0 && readerBody.scrollTop >= max) {
-          setAutoScroll(false);
-        }
-      }, 55);
-    }
-  }
-
-  if (readerClose) readerClose.onclick = closeReader;
-  if (readerOverlay) {
-    // tap outside to close
-    readerOverlay.onclick = function (e) {
-      e = e || window.event;
-      var t = e.target || e.srcElement;
-      if (t === readerOverlay) closeReader();
-    };
-  }
-  if (readerBody) readerBody.onscroll = function () {
-    updateReaderProgress();
-    if (reader.storyId) safeSet("lh_story_pos_" + reader.storyId, String(readerBody.scrollTop || 0));
-  };
-
-  if (prevStoryBtn) prevStoryBtn.onclick = function () { openPrevNext(-1); };
-  if (nextStoryBtn) nextStoryBtn.onclick = function () { openPrevNext(1); };
-  if (fontMinus) fontMinus.onclick = function () { reader.fontSize -= 1; setReaderFont(); };
-  if (fontPlus) fontPlus.onclick = function () { reader.fontSize += 1; setReaderFont(); };
-  if (autoScrollBtn) autoScrollBtn.onclick = function () { setAutoScroll(!reader.auto); };
-
-  document.addEventListener("keydown", function (e) {
-    e = e || window.event;
-    var code = e.keyCode || 0;
-    if (!reader.open) return;
-
-    // ESC
-    if (code === 27) closeReader();
-    // Left/Right: prev/next
-    if (code === 37) openPrevNext(-1);
-    if (code === 39) openPrevNext(1);
-    // +/- font
-    if (code === 187 || code === 107) { reader.fontSize += 1; setReaderFont(); } // +
-    if (code === 189 || code === 109) { reader.fontSize -= 1; setReaderFont(); } // -
-    // Space: auto
-    if (code === 32) { if (e.preventDefault) e.preventDefault(); setAutoScroll(!reader.auto); }
+  var list = [];
+  list.push({
+    id: "ai-story",
+    title: "✨ AI Kể truyện",
+    sub: "Tạo truyện mới bằng Gemini",
+    tags: ["AI", "new"],
+    tile: "✨",
+    kind: "ai"
   });
 
-  // ===================== RENDER LIST =====================
-  function render() {
-    var items = DATA[state.tab] || [];
-    var filtered = filterItems(items, state.query, state.tab);
+  for(var i=0;i<saved.length;i++){
+    list.push(saved[i]);
+  }
+  for(var j=0;j<BUILTIN_STORIES.length;j++){
+    list.push(BUILTIN_STORIES[j]);
+  }
+  return list;
+}
 
-    var tabName = tabLabel(state.tab);
-    if (hint) {
-      hint.innerHTML = state.query
-        ? ("Đang lọc trong <b>" + tabName + "</b>…")
-        : ("Gõ để tìm kiếm trong tab <b>" + tabName + "</b>.");
+/* =========================
+   RENDER
+   ========================= */
+function setTab(tab){
+  state.tab = tab;
+  lsSet(LS.tab, tab);
+  for(var i=0;i<tabs.length;i++){
+    var t = tabs[i];
+    var tTab = t.getAttribute("data-tab");
+    if(tTab === tab){
+      t.className = "tab active";
+      t.setAttribute("aria-selected","true");
+    }else{
+      t.className = "tab";
+      t.setAttribute("aria-selected","false");
     }
-    if (statusText) statusText.innerHTML = tabName + " • " + filtered.length + " kết quả";
+  }
+  render();
+}
 
-    if (filtered.length === 0) {
-      itemsRoot.innerHTML = "";
-      if (emptyState) emptyState.style.display = "block";
-      return;
-    } else {
-      if (emptyState) emptyState.style.display = "none";
-    }
+function setView(view){
+  state.view = view;
+  lsSet(LS.view, view);
+  itemsRoot.className = "grid " + (view === "list" ? "view-list" : "view-card");
+  viewLabel.innerHTML = (view === "list") ? "List" : "Card";
+  render();
+}
 
-    var html = "";
-    for (var i = 0; i < filtered.length; i++) {
-      var it = filtered[i];
-      var dataUrl = (state.tab === "game" && it.url) ? (' data-url="' + escapeHtml(it.url) + '"') : "";
-      html += (
-        '<article class="item" data-id="' + escapeHtml(it.id) + '"' + dataUrl + ">" +
-          '<div class="item-top">' +
-            '<div class="item-left">' +
-              '<div class="item-left-row">' +
-                renderTile(state.tab, it.title) +
-                '<div class="item-text">' +
-                  '<h3 class="item-title">' + escapeHtml(it.title) + "</h3>" +
-                  '<div class="item-meta">' + escapeHtml(it.meta || "") + "</div>" +
-                "</div>" +
-              "</div>" +
-            "</div>" +
-            '<div class="item-badge">' + escapeHtml(it.badge || "") + "</div>" +
-          "</div>" +
-          '<div class="item-desc">' + escapeHtml(it.desc || "") + "</div>" +
-        "</article>"
-      );
-    }
-    itemsRoot.innerHTML = html;
+function getItemsForTab(tab){
+  if(tab === "game") return GAMES;
+  if(tab === "music") return MUSIC;
+  if(tab === "story") return makeStoryList();
+  return [];
+}
 
-    itemsRoot.onclick = function (e) {
-      e = e || window.event;
-      var target = e.target || e.srcElement;
+function matchesQuery(item, q){
+  if(!q) return true;
+  var hay = normalize(item.title + " " + (item.sub||"") + " " + (item.tags||[]).join(" "));
+  return hay.indexOf(q) >= 0;
+}
 
-      while (target && target !== itemsRoot && (!target.getAttribute || !target.getAttribute("data-id"))) {
-        target = target.parentNode;
-      }
-      if (!target || target === itemsRoot) return;
+function render(){
+  var q = normalize(state.query);
+  var data = getItemsForTab(state.tab);
 
-      var id = target.getAttribute("data-id");
-
-      // Game: open directly
-      if (state.tab === "game") {
-        var url = target.getAttribute("data-url");
-        if (url) { location.href = url; return; }
-      }
-
-      // Story: open reader
-      if (state.tab === "story") {
-        openReader(id);
-        return;
-      }
-
-      // Music: hiện tại chỉ thông báo
-      try { alert("Music: chưa làm player. (Bạn có thể yêu cầu mình làm tiếp)"); } catch (err) {}
-    };
+  // filter
+  var filtered = [];
+  for(var i=0;i<data.length;i++){
+    if(matchesQuery(data[i], q)) filtered.push(data[i]);
   }
 
-  // auto open last story if you want (optional)
-  // var lastStory = safeGet("lh_story_last", "");
-  // if (state.tab === "story" && lastStory) openReader(lastStory);
+  // hint + status
+  resultHint.innerHTML = q ? ("Kết quả cho: <b>" + safeText(state.query) + "</b>") : "Gõ để tìm kiếm trong tab hiện tại.";
+  statusText.innerHTML = cap(state.tab) + " • " + filtered.length + " kết quả";
 
+  // empty
+  if(filtered.length === 0){
+    hide(itemsRoot);
+    show(emptyState);
+    return;
+  }
+  show(itemsRoot);
+  hide(emptyState);
+
+  // render items
+  itemsRoot.innerHTML = "";
+  for(var k=0;k<filtered.length;k++){
+    itemsRoot.appendChild(renderItem(filtered[k]));
+  }
+}
+
+function cap(s){
+  s = safeText(s);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function renderItem(item){
+  var el = document.createElement("div");
+  el.className = "item";
+  el.setAttribute("data-id", item.id);
+
+  var tile = document.createElement("div");
+  tile.className = "tile";
+  tile.innerHTML = safeText(item.tile || item.title.charAt(0).toUpperCase());
+
+  var text = document.createElement("div");
+  text.className = "item-text";
+
+  var title = document.createElement("div");
+  title.className = "item-title";
+  title.innerHTML = safeText(item.title);
+
+  var sub = document.createElement("div");
+  sub.className = "item-sub";
+  sub.innerHTML = safeText(item.sub || "");
+
+  var tags = document.createElement("div");
+  tags.className = "item-tags";
+  var tagArr = item.tags || [];
+  for(var i=0;i<tagArr.length;i++){
+    var b = document.createElement("span");
+    b.className = "badge";
+    b.innerHTML = safeText(tagArr[i]);
+    tags.appendChild(b);
+  }
+
+  text.appendChild(title);
+  text.appendChild(sub);
+  if(tagArr.length) text.appendChild(tags);
+
+  var right = document.createElement("div");
+  right.className = "item-right";
+  right.innerHTML = "›";
+
+  el.appendChild(tile);
+  el.appendChild(text);
+  el.appendChild(right);
+
+  el.onclick = function(){
+    onItemClick(item);
+  };
+  return el;
+}
+
+function onItemClick(item){
+  if(state.tab === "game"){
+    if(item.url && item.url !== "#") window.location.href = item.url;
+    return;
+  }
+  if(state.tab === "music"){
+    // placeholder: you can link to a music page later
+    alert("Music item: " + item.title + "\nBạn có thể gắn link sau nhé.");
+    return;
+  }
+  if(state.tab === "story"){
+    if(item.kind === "ai"){
+      openStoryOverlay(null, true); // open AI mode
+    }else{
+      openStoryOverlay(item, false);
+    }
+  }
+}
+
+/* =========================
+   STORY OVERLAY
+   ========================= */
+function setStoryMode(mode){
+  // mode: read|ai|voice
+  modeReadBtn.className = "mini-tab" + (mode === "read" ? " active" : "");
+  modeAIBtn.className = "mini-tab" + (mode === "ai" ? " active" : "");
+  modeVoiceBtn.className = "mini-tab" + (mode === "voice" ? " active" : "");
+
+  panelRead.style.display = (mode === "read") ? "" : "none";
+  panelAI.style.display = (mode === "ai") ? "" : "none";
+  panelVoice.style.display = (mode === "voice") ? "" : "none";
+
+  storyMetaEl.innerHTML = "Story • " + (mode === "ai" ? "AI" : (mode === "voice" ? "AI Đọc" : "Reader"));
+}
+
+function openStoryOverlay(item, openAI){
+  state.storyOpen = item;
+  state.storyIsGenerated = false;
+
+  // reset save button
+  storySave.style.display = "none";
+
+  // badges
+  storyBadgesEl.innerHTML = "";
+
+  if(openAI){
+    storyTile.innerHTML = "✨";
+    storyTitleEl.innerHTML = "AI Kể truyện";
+    storyTextEl.innerHTML = "Tạo truyện trong tab AI Kể, rồi bấm 'Đưa sang tab Đọc'.";
+    setOverlayVisible(storyOverlay, true);
+    setStoryMode("ai");
+    setStatus(aiStatus, "");
+    return;
+  }
+
+  // normal story
+  storyTile.innerHTML = safeText(item.tile || "S");
+  storyTitleEl.innerHTML = safeText(item.title);
+  storyTextEl.innerHTML = safeText(item.content || "");
+
+  // badges
+  var tags = item.tags || [];
+  for(var i=0;i<tags.length;i++){
+    var b = document.createElement("span");
+    b.className = "badge";
+    b.innerHTML = safeText(tags[i]);
+    storyBadgesEl.appendChild(b);
+  }
+
+  setOverlayVisible(storyOverlay, true);
+  setStoryMode("read");
+
+  // apply display settings
+  applyReaderStyle();
+}
+
+function closeStoryOverlay(){
+  setOverlayVisible(storyOverlay, false);
+  // stop audio
+  try{ ttsPlayer.pause(); }catch(e){}
+  try{ ttsPlayer.src = ""; }catch(e){}
+  setStatus(ttsStatus, "");
+}
+
+function applyReaderStyle(){
+  var fs = parseInt(fontSizeSel.value, 10) || 18;
+  var lh = parseFloat(lineHeightSel.value) || 1.5;
+  storyTextEl.style.fontSize = fs + "px";
+  storyTextEl.style.lineHeight = String(lh);
+}
+
+/* =========================
+   GEMINI CLIENT (REST)
+   ========================= */
+function xhrPost(url, bodyText, onOk, onErr){
+  try{
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    // Keep as text/plain to reduce preflight issues in browsers
+    try{ xhr.setRequestHeader("Content-Type", "text/plain; charset=utf-8"); }catch(e){}
+    xhr.onreadystatechange = function(){
+      if(xhr.readyState !== 4) return;
+      if(xhr.status >= 200 && xhr.status < 300){
+        onOk(xhr.responseText);
+      }else{
+        onErr("HTTP " + xhr.status + ": " + (xhr.responseText || ""));
+      }
+    };
+    xhr.onerror = function(){
+      onErr("Network error");
+    };
+    xhr.send(bodyText);
+  }catch(e){
+    onErr("XHR error: " + e.message);
+  }
+}
+
+function geminiGenerateContent(model, reqObj, onOk, onErr){
+  var key = getApiKey();
+  if(!key){
+    onErr("Chưa có API key. Vào ⚙ Cài đặt hoặc dán vào GEMINI_API_KEY trong script.js.");
+    return;
+  }
+
+  // Use query param for best compatibility (old browsers).
+  // Docs recommend x-goog-api-key header in general. (See Gemini API reference)
+  var url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key);
+
+  var bodyText;
+  try{
+    bodyText = JSON.stringify(reqObj);
+  }catch(e){
+    onErr("JSON error");
+    return;
+  }
+
+  xhrPost(url, bodyText, function(raw){
+    var data;
+    try{
+      data = JSON.parse(raw);
+    }catch(e){
+      onErr("Parse response failed");
+      return;
+    }
+    onOk(data);
+  }, onErr);
+}
+
+function pickText(resp){
+  try{
+    var parts = resp.candidates[0].content.parts;
+    var out = "";
+    for(var i=0;i<parts.length;i++){
+      if(parts[i].text) out += parts[i].text;
+    }
+    return out;
+  }catch(e){
+    return "";
+  }
+}
+
+/* WAV helper (PCM 16-bit little-endian @ 24000Hz mono) */
+function base64ToUint8Array(base64){
+  var binary = atob(base64);
+  var len = binary.length;
+  var bytes = new Uint8Array(len);
+  for(var i=0;i<len;i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function writeString(view, offset, str){
+  for(var i=0;i<str.length;i++){
+    view.setUint8(offset + i, str.charCodeAt(i));
+  }
+}
+
+function pcmToWavBlob(pcmBytes, sampleRate){
+  sampleRate = sampleRate || 24000;
+  var numChannels = 1;
+  var bitsPerSample = 16;
+  var blockAlign = numChannels * (bitsPerSample / 8);
+  var byteRate = sampleRate * blockAlign;
+
+  var dataSize = pcmBytes.length;
+  var buffer = new ArrayBuffer(44 + dataSize);
+  var view = new DataView(buffer);
+
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, "WAVE");
+
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+
+  writeString(view, 36, "data");
+  view.setUint32(40, dataSize, true);
+
+  var outBytes = new Uint8Array(buffer);
+  outBytes.set(pcmBytes, 44);
+
+  return new Blob([outBytes], { type: "audio/wav" });
+}
+
+function ttsFromText(text, voiceName, onOk, onErr){
+  var prompt = safeText(text);
+  if(!prompt){
+    onErr("Không có nội dung để đọc.");
+    return;
+  }
+
+  var req = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseModalities: ["AUDIO"],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: voiceName || "Kore" }
+        }
+      }
+    },
+    model: MODEL_TTS
+  };
+
+  geminiGenerateContent(MODEL_TTS, req, function(resp){
+    try{
+      var part = resp.candidates[0].content.parts[0];
+      var b64 = part.inlineData.data;
+      var pcm = base64ToUint8Array(b64);
+      var wavBlob = pcmToWavBlob(pcm, 24000);
+      onOk(wavBlob);
+    }catch(e){
+      onErr("TTS parse failed");
+    }
+  }, onErr);
+}
+
+/* =========================
+   EVENTS
+   ========================= */
+toggleThemeBtn.onclick = function(){
+  var isDark = body.className.indexOf("dark") >= 0;
+  if(isDark){
+    body.className = body.className.replace(/\bdark\b/g,"").replace(/\s{2,}/g," ").replace(/^\s+|\s+$/g,"");
+    lsSet(LS.theme, "light");
+  }else{
+    body.className = (body.className + " dark").replace(/\s{2,}/g," ").replace(/^\s+|\s+$/g,"");
+    lsSet(LS.theme, "dark");
+  }
+};
+
+openSettingsBtn.onclick = function(){
+  setOverlayVisible(settingsOverlay, true);
+  apiKeyInput.value = lsGet(LS.apiKey, "");
+  setStatus(settingsStatus, "");
+};
+
+settingsClose.onclick = function(){
+  setOverlayVisible(settingsOverlay, false);
+};
+
+saveApiKey.onclick = function(){
+  var k = safeText(apiKeyInput.value).trim();
+  if(k.length < 10){
+    setStatus(settingsStatus, "Key có vẻ chưa đúng (quá ngắn).");
+    return;
+  }
+  lsSet(LS.apiKey, k);
+  setStatus(settingsStatus, "Đã lưu key vào máy (localStorage).");
+};
+
+clearApiKey.onclick = function(){
+  lsSet(LS.apiKey, "");
+  apiKeyInput.value = "";
+  setStatus(settingsStatus, "Đã xoá key.");
+};
+
+for(var i=0;i<tabs.length;i++){
+  (function(btn){
+    btn.onclick = function(){
+      setTab(btn.getAttribute("data-tab"));
+    };
+  })(tabs[i]);
+}
+
+toggleViewBtn.onclick = function(){
+  setView(state.view === "card" ? "list" : "card");
+};
+
+searchInput.oninput = function(){
+  state.query = searchInput.value || "";
+  render();
+};
+
+if(clearSearchBtn){
+  clearSearchBtn.onclick = function(){
+    searchInput.value = "";
+    state.query = "";
+    render();
+  };
+}
+
+storyClose.onclick = closeStoryOverlay;
+
+modeReadBtn.onclick = function(){ setStoryMode("read"); };
+modeAIBtn.onclick = function(){ setStoryMode("ai"); };
+modeVoiceBtn.onclick = function(){ setStoryMode("voice"); };
+
+fontSizeSel.onchange = applyReaderStyle;
+lineHeightSel.onchange = applyReaderStyle;
+
+aiLenPreset.onchange = function(){
+  if(aiLenPreset.value === "custom") show(aiLenCustomWrap);
+  else hide(aiLenCustomWrap);
+};
+
+aiGenerate.onclick = function(){
+  var topic = safeText(aiTopic.value).trim() || "Một cuộc phiêu lưu nhỏ trong thành phố";
+  var genre = safeText(aiGenre.value).trim() || "cổ tích";
+  var style = safeText(aiStyle.value).trim();
+
+  var targetWords = 0;
+  if(aiLenPreset.value === "custom"){
+    targetWords = parseInt(aiLenWords.value, 10) || 800;
+  }else if(aiLenPreset.value === "short"){
+    targetWords = 400;
+  }else if(aiLenPreset.value === "medium"){
+    targetWords = 900;
+  }else{
+    targetWords = 1600;
+  }
+  if(targetWords < 200) targetWords = 200;
+  if(targetWords > 4000) targetWords = 4000;
+
+  var maxTokens = targetWords <= 500 ? 1200 : (targetWords <= 1200 ? 2400 : 4096);
+
+  var prompt =
+    "Bạn là người kể chuyện. Hãy viết 1 truyện " + genre + " bằng tiếng Việt.\n" +
+    "Chủ đề: " + topic + "\n" +
+    (style ? ("Phong cách: " + style + "\n") : "") +
+    "Yêu cầu:\n" +
+    "- Độ dài khoảng " + targetWords + " từ.\n" +
+    "- Dòng đầu là TIÊU ĐỀ.\n" +
+    "- Chia đoạn ngắn, dễ đọc trên điện thoại.\n" +
+    "- Tiếng Việt tự nhiên, kết thúc rõ ràng.\n";
+
+  setStatus(aiStatus, "Đang tạo truyện...");
+  aiGenerate.disabled = true;
+
+  var req = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.8,
+      topP: 0.9,
+      maxOutputTokens: maxTokens
+    },
+    model: MODEL_TEXT
+  };
+
+  geminiGenerateContent(MODEL_TEXT, req, function(resp){
+    var out = pickText(resp);
+    if(!out){
+      setStatus(aiStatus, "Không nhận được nội dung (rỗng).");
+      aiGenerate.disabled = false;
+      return;
+    }
+    // keep in memory
+    state.storyOpen = {
+      id: "ai-" + String(+new Date()),
+      title: extractTitle(out) || "Truyện AI",
+      sub: "AI • " + targetWords + " từ",
+      tags: ["AI", genre],
+      tile: "✨",
+      kind: "story",
+      content: out,
+      createdAt: +new Date()
+    };
+    state.storyIsGenerated = true;
+
+    storySave.style.display = "";
+    setStatus(aiStatus, "Xong! Bấm 'Đưa sang tab Đọc' để xem, hoặc Save để lưu.");
+    aiGenerate.disabled = false;
+  }, function(err){
+    setStatus(aiStatus, "Lỗi: " + safeText(err));
+    aiGenerate.disabled = false;
+  });
+};
+
+aiUseToRead.onclick = function(){
+  if(!state.storyOpen || !state.storyOpen.content){
+    setStatus(aiStatus, "Chưa có truyện. Hãy bấm '✨ Tạo truyện' trước.");
+    return;
+  }
+  // show as reader
+  openStoryOverlay(state.storyOpen, false);
+};
+
+storySave.onclick = function(){
+  if(!state.storyOpen || !state.storyOpen.content){
+    alert("Chưa có truyện để lưu.");
+    return;
+  }
+  saveStoryItem(state.storyOpen);
+  // badge + refresh list later
+  setStatus(aiStatus, "Đã lưu. Vào tab Story để thấy trong danh sách.");
+  // mark not too spammy
+  storySave.style.display = "none";
+};
+
+ttsSpeak.onclick = function(){
+  var voice = safeText(ttsVoice.value).trim() || "Kore";
+  var limit = parseInt(ttsLimit.value, 10) || 1400;
+
+  var text = "";
+  if(state.storyOpen && state.storyOpen.content){
+    text = safeText(state.storyOpen.content);
+  }else{
+    text = safeText(storyTextEl.innerHTML);
+  }
+  if(!text){
+    setStatus(ttsStatus, "Không có truyện để đọc.");
+    return;
+  }
+
+  text = text.replace(/\s+/g, " ").slice(0, limit);
+
+  setStatus(ttsStatus, "Đang tạo audio...");
+  ttsSpeak.disabled = true;
+
+  ttsFromText(text, voice, function(wavBlob){
+    try{
+      var url = (window.URL || window.webkitURL).createObjectURL(wavBlob);
+      ttsPlayer.src = url;
+      ttsPlayer.play();
+      setStatus(ttsStatus, "OK. Nếu không nghe được, thử đổi giọng (Kore/Puck...) hoặc thử trình duyệt khác.");
+    }catch(e){
+      setStatus(ttsStatus, "Không play được audio.");
+    }
+    ttsSpeak.disabled = false;
+  }, function(err){
+    setStatus(ttsStatus, "Lỗi TTS: " + safeText(err));
+    ttsSpeak.disabled = false;
+  });
+};
+
+ttsStop.onclick = function(){
+  try{ ttsPlayer.pause(); }catch(e){}
+  try{ ttsPlayer.currentTime = 0; }catch(e){}
+  setStatus(ttsStatus, "Đã dừng.");
+};
+
+function extractTitle(text){
+  text = safeText(text).replace(/\r/g, "");
+  var firstLine = text.split("\n")[0] || "";
+  firstLine = firstLine.replace(/^\s+|\s+$/g,"");
+  // remove markdown heading
+  firstLine = firstLine.replace(/^#+\s*/, "");
+  // if too long, cut
+  if(firstLine.length > 60) firstLine = firstLine.slice(0, 60) + "...";
+  return firstLine;
+}
+
+/* =========================
+   INIT
+   ========================= */
+(function init(){
+  // theme
+  var th = lsGet(LS.theme, "light");
+  if(th === "dark") body.className = (body.className + " dark").replace(/\s{2,}/g," ").replace(/^\s+|\s+$/g,"");
+
+  // view
+  var v = lsGet(LS.view, "card");
+  setView(v === "list" ? "list" : "card");
+
+  // tab
+  var t = lsGet(LS.tab, "game");
+  setTab(t);
+
+  // AI custom length toggle
+  if(aiLenPreset.value === "custom") show(aiLenCustomWrap); else hide(aiLenCustomWrap);
 })();

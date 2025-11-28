@@ -19,6 +19,9 @@
       </div>
 
       <div class="actions">
+        <button class="icon-btn" id="openSettings" type="button" title="Cài đặt" aria-label="Settings">
+          <span class="icon">⚙</span>
+        </button>
         <button class="icon-btn" id="toggleTheme" type="button" title="Dark mode" aria-label="Toggle dark mode">
           <span class="icon">☾</span>
         </button>
@@ -28,7 +31,7 @@
     <!-- Search -->
     <section class="searchbar">
       <span class="search-icon">🔎</span>
-      <input id="searchInput" type="search" placeholder="Tìm kiếm (vd: zombie, piano, fox...)"
+      <input id="searchInput" type="search" placeholder="Tìm kiếm (vd: piano, zombie, cổ tích...)"
              autocomplete="off" />
       <button class="pill-btn" id="clearSearch" type="button" title="Xóa">X</button>
     </section>
@@ -67,36 +70,187 @@
     </footer>
   </div>
 
-  <!-- Story Reader Overlay -->
-  <div class="overlay" id="readerOverlay" aria-hidden="true">
-    <div class="overlay-card reader" role="dialog" aria-modal="true" aria-labelledby="readerTitle">
+  <!-- Story Overlay (Reader + AI) -->
+  <div class="overlay" id="storyOverlay" aria-hidden="true">
+    <div class="overlay-card" role="dialog" aria-modal="true" aria-labelledby="storyTitle">
       <div class="overlay-top">
-        <button class="back-btn" id="readerClose" type="button">← Back</button>
+        <button class="back-btn" id="storyClose" type="button">← Back</button>
 
         <div class="overlay-actions">
-          <button class="pill-btn" id="fontMinus" type="button" title="Nhỏ chữ">A-</button>
-          <button class="pill-btn" id="fontPlus" type="button" title="To chữ">A+</button>
-          <button class="pill-btn" id="autoScrollBtn" type="button" title="Auto scroll">Auto</button>
+          <button class="pill-btn" id="storySave" type="button" title="Lưu truyện AI">Save</button>
         </div>
       </div>
 
-      <div class="reader-head">
-        <div class="tile big story" id="readerTile">S</div>
-        <div class="reader-head-text">
-          <div class="detail-title" id="readerTitle">Title</div>
-          <div class="detail-meta" id="readerMeta">Meta</div>
-          <div class="reader-sub" id="readerSub">Lưu vị trí đọc • Offline</div>
+      <div class="detail-head">
+        <div class="tile big" id="storyTile">S</div>
+        <div class="detail-head-text">
+          <div class="detail-title" id="storyTitle">Story</div>
+          <div class="detail-meta" id="storyMeta">Story • Reader</div>
+          <div class="detail-badges" id="storyBadges"></div>
         </div>
       </div>
 
-      <div class="reader-body" id="readerBody">
-        <div class="reader-content" id="readerContent"></div>
+      <div class="overlay-tabs">
+        <button class="mini-tab active" id="modeRead" type="button">Đọc</button>
+        <button class="mini-tab" id="modeAI" type="button">AI Kể</button>
+        <button class="mini-tab" id="modeVoice" type="button">AI Đọc</button>
       </div>
 
-      <div class="reader-bottom">
-        <button class="pill-btn" id="prevStory" type="button">◀ Prev</button>
-        <div class="reader-progress" id="readerProgress">0%</div>
-        <button class="pill-btn" id="nextStory" type="button">Next ▶</button>
+      <!-- READ MODE -->
+      <div class="detail-body" id="panelRead">
+        <div class="detail-section">
+          <div class="detail-label">Nội dung</div>
+          <div class="story-text" id="storyText"></div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-label">Hiển thị</div>
+          <div class="row">
+            <label class="row-item">
+              Cỡ chữ
+              <select id="fontSize">
+                <option value="16">16</option>
+                <option value="18" selected>18</option>
+                <option value="20">20</option>
+                <option value="22">22</option>
+              </select>
+            </label>
+
+            <label class="row-item">
+              Giãn dòng
+              <select id="lineHeight">
+                <option value="1.35">1.35</option>
+                <option value="1.5" selected>1.5</option>
+                <option value="1.65">1.65</option>
+                <option value="1.8">1.8</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI MODE -->
+      <div class="detail-body" id="panelAI" style="display:none;">
+        <div class="detail-section">
+          <div class="detail-label">AI Kể truyện (Gemini)</div>
+          <div class="ai-box">
+            <label class="ai-row">
+              <span>Chủ đề</span>
+              <input id="aiTopic" type="text" placeholder="vd: Chú mèo lạc ở Hà Nội" />
+            </label>
+
+            <label class="ai-row">
+              <span>Thể loại</span>
+              <select id="aiGenre">
+                <option value="cổ tích" selected>Cổ tích</option>
+                <option value="phiêu lưu">Phiêu lưu</option>
+                <option value="học đường">Học đường</option>
+                <option value="hài hước">Hài hước</option>
+                <option value="kinh dị nhẹ">Kinh dị nhẹ</option>
+                <option value="khoa học viễn tưởng">Khoa học viễn tưởng</option>
+              </select>
+            </label>
+
+            <div class="row">
+              <label class="row-item">
+                Độ dài
+                <select id="aiLenPreset">
+                  <option value="short" selected>Ngắn</option>
+                  <option value="medium">Vừa</option>
+                  <option value="long">Dài</option>
+                  <option value="custom">Tuỳ chỉnh</option>
+                </select>
+              </label>
+
+              <label class="row-item" id="aiLenCustomWrap" style="display:none;">
+                Số từ
+                <input id="aiLenWords" type="number" min="200" max="4000" step="50" value="800" />
+              </label>
+            </div>
+
+            <label class="ai-row">
+              <span>Phong cách</span>
+              <input id="aiStyle" type="text" placeholder="vd: nhẹ nhàng, vui tươi, kết thúc có bài học" />
+            </label>
+
+            <div class="row">
+              <button class="pill-btn wide" id="aiGenerate" type="button">✨ Tạo truyện</button>
+              <button class="pill-btn wide" id="aiUseToRead" type="button">Đưa sang tab Đọc</button>
+            </div>
+
+            <div class="ai-status" id="aiStatus"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VOICE MODE -->
+      <div class="detail-body" id="panelVoice" style="display:none;">
+        <div class="detail-section">
+          <div class="detail-label">AI Đọc (Gemini TTS)</div>
+
+          <div class="ai-box">
+            <div class="warn">
+              Tip: nếu Lumia/WP8 không phát được WAV, hãy thử trên PC/Android trước.
+            </div>
+
+            <label class="ai-row">
+              <span>Giọng</span>
+              <input id="ttsVoice" type="text" value="Kore" />
+            </label>
+
+            <label class="ai-row">
+              <span>Giới hạn đọc (ký tự)</span>
+              <select id="ttsLimit">
+                <option value="800">Ngắn (800)</option>
+                <option value="1400" selected>Vừa (1400)</option>
+                <option value="2400">Dài (2400)</option>
+              </select>
+            </label>
+
+            <div class="row">
+              <button class="pill-btn wide" id="ttsSpeak" type="button">🔊 AI đọc</button>
+              <button class="pill-btn wide" id="ttsStop" type="button">Stop</button>
+            </div>
+
+            <audio id="ttsPlayer" controls style="width:100%; margin-top:10px;"></audio>
+            <div class="ai-status" id="ttsStatus"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Settings Overlay -->
+  <div class="overlay" id="settingsOverlay" aria-hidden="true">
+    <div class="overlay-card" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="overlay-top">
+        <button class="back-btn" id="settingsClose" type="button">← Back</button>
+        <div class="overlay-actions"></div>
+      </div>
+
+      <div class="detail-head">
+        <div class="tile big">⚙</div>
+        <div class="detail-head-text">
+          <div class="detail-title" id="settingsTitle">Cài đặt</div>
+          <div class="detail-meta">Gemini API (tuỳ chọn)</div>
+          <div class="detail-badges"></div>
+        </div>
+      </div>
+
+      <div class="detail-body">
+        <div class="detail-section">
+          <div class="detail-label">Gemini API Key</div>
+          <div class="warn">
+            Nếu bạn để key trong <b>script.js</b> và deploy GitHub Pages thì key sẽ bị lộ.
+          </div>
+          <input id="apiKeyInput" type="password" placeholder="Dán API key vào đây (tuỳ chọn)" />
+          <div class="row" style="margin-top:10px;">
+            <button class="pill-btn wide" id="saveApiKey" type="button">Save key</button>
+            <button class="pill-btn wide" id="clearApiKey" type="button">Clear</button>
+          </div>
+          <div class="ai-status" id="settingsStatus"></div>
+        </div>
       </div>
     </div>
   </div>
